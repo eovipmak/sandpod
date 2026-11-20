@@ -6,6 +6,7 @@ This module builds the first rootless customer container prototype.
 
 - `Containerfile`: AlmaLinux 10 image and customer-side packages.
 - `config/`: SSH, internal Nginx, and process-supervisor configuration.
+- `scripts/runtime-reload`: gracefully reload one PHP-FPM minor version.
 - `quadlet/customer@.container`: reusable rootless Podman template.
 - `quadlet/customer@001.container`: pilot instance symlink.
 - `quadlet/customer@001.container.d/`: pilot-specific host ports.
@@ -15,17 +16,17 @@ This module builds the first rootless customer container prototype.
 
 | Runtime | Pilot version | Command / FPM listener |
 | --- | --- | --- |
-| PHP | 8.2 | `php82`, FPM `127.0.0.1:9082` |
-| PHP | 8.3 | `php`, FPM `127.0.0.1:9000` |
-| PHP | 8.4 | `php84`, FPM `127.0.0.1:9084` |
+| PHP | 8.2 | `php82`, FPM `127.0.0.1:9082`, host runtime mount |
+| PHP | 8.3 | `php83` / default `php`, FPM `127.0.0.1:9000`, host runtime mount |
+| PHP | 8.4 | `php84`, FPM `127.0.0.1:9084`, host runtime mount |
 | Node.js | 22 | `node`, `npm` |
 | Node.js | 24 | `node-24`, `npm-24` |
 | Python | 3.13 | `python3.13` |
 
-PHP 8.2 and 8.4 use Remi parallel-install packages; the image also enables
-EPEL for tools such as `htop` and Python 3.13. Their signing keys are verified
-by DNF. These repositories are used inside the image build, not added to the
-host by this module.
+PHP executables and extensions are not in the image. They come from the host's
+read-only Remi SCL mounts, managed by the
+[shared-runtimes module](../shared-runtimes/README.md). EPEL remains enabled
+inside the image for tools such as `htop` and Python 3.13.
 
 ## Build and run
 
@@ -34,6 +35,9 @@ Build the image **as the rootless service account**, from this directory:
 ```sh
 podman build -t localhost/sandpod/customer-runtime:pilot .
 ```
+
+Before starting the image, build a current shared PHP runtime for each minor
+version listed in the runtime matrix; see the [shared-runtime guide](../shared-runtimes/README.md).
 
 For each customer, create a **separate rootless service account** with its own
 Podman storage and user systemd manager. Install the template, the instance
@@ -79,8 +83,11 @@ production domains.
 
 ## Not production-complete
 
+PHP executables/configuration are mounted read-only from host runtime prefixes.
+After updating the host RPMs, send a graceful reload to the affected
+per-customer PHP-FPM master using the shared-runtime module's host helper.
+
 The pilot does not yet provide XFS project quotas, host Nginx integration,
-MariaDB connectivity, automated customer provisioning, log rotation policy,
-or full runtime matrices (PHP 8.2/8.3/8.4, Node 20/22/24, Python
-3.11/3.12/3.13). Disk quota and data/image backup must be implemented before
-production use.
+MariaDB connectivity, automated fleet-wide rollout/rollback, log rotation
+policy, or full runtime matrices (Node 20/22/24, Python 3.11/3.12/3.13). Disk
+quota and data backup must be implemented before production use.

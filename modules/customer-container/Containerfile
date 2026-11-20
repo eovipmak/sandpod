@@ -3,6 +3,7 @@ FROM quay.io/almalinuxorg/almalinux:10
 RUN dnf -y install dnf-plugins-core epel-release \
     && dnf config-manager --set-enabled crb \
     && dnf -y install \
+        capstone \
         cronie \
         gcc \
         gcc-c++ \
@@ -12,16 +13,11 @@ RUN dnf -y install dnf-plugins-core epel-release \
         jq \
         make \
         mariadb \
+        libxslt \
         nginx \
         nodejs \
         nodejs24 \
         openssh-server \
-        php-cli \
-        php-fpm \
-        php-mbstring \
-        php-mysqlnd \
-        php-opcache \
-        php-xml \
         pkgconf-pkg-config \
         python3.13 \
         rsync \
@@ -31,23 +27,6 @@ RUN dnf -y install dnf-plugins-core epel-release \
         unzip \
         wget \
         curl \
-    && dnf clean all \
-    && rm -rf /var/cache/dnf
-
-RUN dnf -y install https://rpms.remirepo.net/enterprise/remi-release-10.rpm \
-    && dnf -y install \
-        php82-php-cli \
-        php82-php-fpm \
-        php82-php-mbstring \
-        php82-php-mysqlnd \
-        php82-php-opcache \
-        php82-php-xml \
-        php84-php-cli \
-        php84-php-fpm \
-        php84-php-mbstring \
-        php84-php-mysqlnd \
-        php84-php-opcache \
-        php84-php-xml \
     && dnf clean all \
     && rm -rf /var/cache/dnf
 
@@ -61,21 +40,31 @@ RUN useradd --create-home --shell /bin/bash customer \
     && chmod 0600 /home/customer/.ssh/authorized_keys \
     && install -d -m 0755 \
         /run/sshd \
-        /run/php-fpm \
         /etc/sandpod-config \
-        /var/opt/remi/php82/run/php-fpm \
-        /var/opt/remi/php84/run/php-fpm \
+        /etc/sandpod/php-fpm \
+        /etc/opt/remi \
+        /opt/remi \
         /srv/customer/public \
+        /usr/lib64 \
+    && install -m 0644 /dev/null /usr/lib64/libonig.so.105 \
     && ssh-keygen -A
 
 COPY config/sshd_config /etc/ssh/sshd_config
 COPY config/nginx.conf /etc/sandpod-config/nginx.conf
 COPY config/supervisord.conf /etc/supervisord.conf
+COPY config/php-fpm/ /etc/sandpod/php-fpm/
 COPY config/default-index.html /srv/customer/public/index.html
+COPY scripts/runtime-reload /usr/local/bin/sandpod-runtime-reload
 
-RUN sed -ri 's|^;?listen = .*|listen = 127.0.0.1:9000|' /etc/php-fpm.d/www.conf \
-    && sed -ri 's|^listen = .*|listen = 127.0.0.1:9082|' /etc/opt/remi/php82/php-fpm.d/www.conf \
-    && sed -ri 's|^listen = .*|listen = 127.0.0.1:9084|' /etc/opt/remi/php84/php-fpm.d/www.conf \
+RUN supervisor_password="$(openssl rand -hex 32)" \
+    && sed -i "s/__SUPERVISOR_PASSWORD__/${supervisor_password}/g" /etc/supervisord.conf \
+    && unset supervisor_password \
+    && chmod 0600 /etc/supervisord.conf \
+    && chmod 0755 /usr/local/bin/sandpod-runtime-reload \
+    && ln -s /opt/remi/php82/root/usr/bin/php /usr/local/bin/php82 \
+    && ln -s /opt/remi/php83/root/usr/bin/php /usr/local/bin/php83 \
+    && ln -s /opt/remi/php84/root/usr/bin/php /usr/local/bin/php84 \
+    && ln -s /usr/local/bin/php83 /usr/local/bin/php \
     && ln -sfn /etc/sandpod-config/nginx.conf /etc/nginx/nginx.conf \
     && nginx -t \
     && /usr/sbin/sshd -t

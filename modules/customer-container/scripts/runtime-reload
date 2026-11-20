@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+version="${1:-}"
+
+case "$version" in
+    8.2) runtime="php82"; service="php82-fpm" ;;
+    8.3) runtime="php83"; service="php83-fpm" ;;
+    8.4) runtime="php84"; service="php84-fpm" ;;
+    *)
+        echo "Usage: sandpod-runtime-reload {8.2|8.3|8.4}" >&2
+        exit 2
+        ;;
+esac
+
+binary="/opt/remi/${runtime}/root/usr/sbin/php-fpm"
+ini="/etc/opt/remi/${runtime}/php.ini"
+config="/etc/sandpod/php-fpm/${version}.conf"
+
+"$binary" -t -c "$ini" -y "$config"
+supervisorctl signal USR2 "$service"
+supervisorctl status "$service"
