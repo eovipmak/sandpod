@@ -36,12 +36,23 @@ else
 fi
 
 cp -a "$NGINX_CONF" "${NGINX_CONF}.bak"
+# A PHP map entry is shadowed by an exact-match port-app server block, so a
+# conversion back to PHP must delete the port-app configs first.
+PORT_CONFLICT=0
+[[ -f "${SITES_DIR}/${DOMAIN}.conf" ]] && PORT_CONFLICT=1 || true
+[[ -f "${SUPERVISOR_DIR}/${DOMAIN}.conf" ]] && PORT_CONFLICT=1 || true
+if [[ "$PORT_CONFLICT" -eq 1 ]]; then
+    rm -f "${SITES_DIR}/${DOMAIN}.conf" "${SUPERVISOR_DIR}/${DOMAIN}.conf"
+fi
 map_set site_root "$DOMAIN" "$SITE_ROOT"
 map_set php_fpm_backend "$DOMAIN" "$BACKEND"
 if ! nginx_test_reload; then
     echo "Reload failed, restoring backup." >&2
     mv "${NGINX_CONF}.bak" "$NGINX_CONF"
     exit 1
+fi
+if [[ "$PORT_CONFLICT" -eq 1 ]]; then
+    supervisor_reread_update || { echo "WARNING: nginx reloaded but supervisor update failed." >&2; exit 1; }
 fi
 rm -f "${NGINX_CONF}.bak"
 echo "Site ${DOMAIN}: root=${SITE_ROOT} php=${PHP_MINOR} (${BACKEND})"

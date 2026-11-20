@@ -51,6 +51,8 @@ RUN useradd --create-home --shell /bin/bash customer \
     && install -d -m 0755 \
         /run/sshd \
         /etc/sandpod-config \
+        /etc/sandpod-config/sites \
+        /etc/sandpod-config/supervisor \
         /etc/sandpod/php-fpm \
         /etc/opt/remi \
         /opt/remi \

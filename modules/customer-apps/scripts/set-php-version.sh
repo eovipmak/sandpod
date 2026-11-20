@@ -12,6 +12,11 @@ source "${SCRIPT_DIR}/lib.sh"
 
 if [[ "$DOMAIN" != "default" ]]; then
     valid_domain "$DOMAIN" || { echo "Invalid domain: $DOMAIN" >&2; exit 2; }
+    if [[ -f "${SITES_DIR}/${DOMAIN}.conf" || -f "${SUPERVISOR_DIR}/${DOMAIN}.conf" ]]; then
+        echo "${DOMAIN} is a port app (proxy_pass); PHP version does not apply." >&2
+        echo "Use remove-port-app.sh to drop it or add-site.sh to convert it to PHP." >&2
+        exit 1
+    fi
 fi
 valid_minor "$MINOR" || { echo "Unsupported PHP minor (8.2-8.5): $MINOR" >&2; exit 2; }
 BACKEND="$(backend_for_minor "$MINOR")"

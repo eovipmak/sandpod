@@ -1,10 +1,15 @@
 # Shared bits for customer-apps scripts. Source it, don't run it.
 # Expects: SERVICE_USER, CONTAINER set by caller. Provides:
 #   HOME_DIR UID_NUM  - account home + uid (fails if user manager is down)
+#   NGINX_CONF SITES_DIR SUPERVISOR_DIR - host-side config paths
 #   container_exec    - podman exec as the service account (proper XDG/DBUS env)
 #   nginx_test_reload - nginx -t + reload inside the container
-#   valid_domain / valid_minor / backend_for_minor
-APP_LIB_VERSION=1
+#   supervisor_reread_update - reread supervisor includes + apply (add/remove/update)
+#   valid_domain / valid_minor / valid_port / backend_for_minor
+#   program_for_domain - supervisord program name for a port-app domain
+#   ensure_app_dirs - mkdir ~/config/sites + ~/config/supervisor (host-side)
+#   ensure_nginx_sites_include - patch ~/config/nginx.conf with sites include if missing
+APP_LIB_VERSION=2
 
 [[ -n "${SERVICE_USER:-}" && -n "${CONTAINER:-}" ]] || {
     echo "lib.sh: SERVICE_USER and CONTAINER must be set." >&2; return 2 2>/dev/null || exit 2
@@ -21,6 +26,8 @@ UID_NUM="$(id -u "$SERVICE_USER")"
 }
 NGINX_CONF="${HOME_DIR}/config/nginx.conf"
 [[ -f "$NGINX_CONF" ]] || { echo "Missing ${NGINX_CONF}." >&2; exit 1; }
+SITES_DIR="${HOME_DIR}/config/sites"
+SUPERVISOR_DIR="${HOME_DIR}/config/supervisor"
 
 container_exec() {
     runuser -u "$SERVICE_USER" -- env HOME="$HOME_DIR" \
@@ -37,11 +44,51 @@ nginx_test_reload() {
     sleep 1
 }
 
+supervisor_reread_update() {
+    container_exec supervisorctl reread || return 1
+    container_exec supervisorctl update || return 1
+}
+
 valid_domain() {
     [[ "${1,,}" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$ ]]
 }
 
 valid_minor() { [[ "$1" =~ ^8\.[2-5]$ ]]; }
+
+valid_port() { [[ "$1" =~ ^[0-9]+$ ]] && [[ "$1" -ge 3000 && "$1" -le 3999 ]]; }
+
+# Supervisord program name for a port-app domain. Domains are already
+# restricted to [a-z0-9.-]; dots become dashes for a safe section name.
+program_for_domain() {
+    local d="${1,,}"
+    d="${d//./-}"
+    printf 'app-%s' "$d"
+}
+
+# Host-side directories backing the in-container includes. The container
+# mounts ~/config read-only, so supervisord/nginx only read these files.
+ensure_app_dirs() {
+    install -d -o "$SERVICE_USER" -g "$SERVICE_USER" -m 0755 "$SITES_DIR" "$SUPERVISOR_DIR"
+}
+
+# Migration for customers provisioned before the sites include existed:
+# append the include to ~/config/nginx.conf if it is missing. Idempotent.
+ensure_nginx_sites_include() {
+    python3 - "$NGINX_CONF" <<'PYEOF'
+import re, sys
+path = sys.argv[1]
+src = open(path).read()
+if re.search(r'include\s+/etc/sandpod-config/sites/\*\.conf\s*;', src):
+    sys.exit(0)
+# Insert before the final closing brace of the http block (last '}').
+stripped = src.rstrip()
+idx = stripped.rfind('}')
+assert idx != -1, 'no http closing brace found'
+addition = '    include /etc/sandpod-config/sites/*.conf;\n'
+open(path, 'w').write(stripped[:idx] + addition + stripped[idx:] + '\n')
+print('Added sites include to %s' % path, file=sys.stderr)
+PYEOF
+}
 
 backend_for_minor() {
     case "$1" in

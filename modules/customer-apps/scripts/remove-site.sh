@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Remove a site's nginx map entries (data kept by default). Run as root.
+# Remove a site's nginx map entries and/or port-app configs (data kept by default).
+# Run as root.
 # Usage: remove-site.sh <service-user> <container> <domain> [--delete-data]
 set -euo pipefail
 [[ $# -ge 3 ]] || { echo "Usage: $0 <service-user> <container> <domain> [--delete-data]" >&2; exit 2; }
@@ -16,6 +17,12 @@ source "${SCRIPT_DIR}/lib.sh"
 valid_domain "$DOMAIN" || { echo "Invalid domain: $DOMAIN" >&2; exit 2; }
 
 cp -a "$NGINX_CONF" "${NGINX_CONF}.bak"
+PORT_CONFLICT=0
+[[ -f "${SITES_DIR}/${DOMAIN}.conf" ]] && PORT_CONFLICT=1 || true
+[[ -f "${SUPERVISOR_DIR}/${DOMAIN}.conf" ]] && PORT_CONFLICT=1 || true
+if [[ "$PORT_CONFLICT" -eq 1 ]]; then
+    rm -f "${SITES_DIR}/${DOMAIN}.conf" "${SUPERVISOR_DIR}/${DOMAIN}.conf"
+fi
 map_del site_root "$DOMAIN"
 map_del php_fpm_backend "$DOMAIN"
 if ! nginx_test_reload; then
@@ -23,9 +30,12 @@ if ! nginx_test_reload; then
     mv "${NGINX_CONF}.bak" "$NGINX_CONF"
     exit 1
 fi
+if [[ "$PORT_CONFLICT" -eq 1 ]]; then
+    supervisor_reread_update || { echo "WARNING: nginx reloaded but supervisor update failed." >&2; exit 1; }
+fi
 rm -f "${NGINX_CONF}.bak"
 if [[ "$DELETE_DATA" -eq 1 && -d "${HOME_DIR}/data/${DOMAIN}" ]]; then
     rm -rf "${HOME_DIR}/data/${DOMAIN}"
     echo "Deleted data for ${DOMAIN}."
 fi
-echo "Removed site ${DOMAIN} (maps deleted)."
+echo "Removed site ${DOMAIN} (maps + port-app configs deleted)."

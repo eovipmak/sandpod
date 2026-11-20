@@ -99,6 +99,25 @@ in the mounted `~/config/nginx.conf`, so the control panel manages domains by
 editing that file and reloading Nginx inside the container. No image rebuild
 needed per site.
 
+## Port apps (Node/Python)
+
+Per-domain reverse proxies plus persistent processes, backed by host-side
+`~/config` and in-container includes:
+
+- `~/config/sites/<domain>.conf`: `server { server_name <domain>;
+  location / { proxy_pass http://127.0.0.1:<3xxx>; ... } }`, included from
+  `nginx.conf`. Exact `server_name` match takes precedence over the catch-all
+  PHP server above.
+- `~/config/supervisor/<domain>.conf`: `[program:app-<domain>]` running the
+  panel-chosen command as `customer` in `/srv/customer/<domain>` (or
+  `public_html` with `--primary`), included from `supervisord.conf`.
+
+Manage them with `customer-apps/scripts/add-port-app.sh` /
+`remove-port-app.sh` (port range `3000-3999`, panel-allocated). Rebuilding
+the image and recreating the container is required once to pick up the new
+`supervisord.conf` `[include]`; `add-port-app.sh` patches an older mounted
+`nginx.conf` that lacks the sites include automatically.
+
 ## Not production-complete
 
 PHP executables/configuration are mounted read-only from host runtime prefixes.

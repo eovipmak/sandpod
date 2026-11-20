@@ -166,7 +166,7 @@ chown "$SERVICE_USER:$SERVICE_USER" "${DROPIN_DIR}/10-instance.conf"
 chmod 0644 "${DROPIN_DIR}/10-instance.conf"
 
 # 4. Data + config. Control panel owns ~/data layout afterwards.
-install -d -m 0755 "${HOME_DIR}/data" "${HOME_DIR}/data/public_html" "${HOME_DIR}/config"
+install -d -m 0755 "${HOME_DIR}/data" "${HOME_DIR}/data/public_html" "${HOME_DIR}/config" "${HOME_DIR}/config/sites" "${HOME_DIR}/config/supervisor"
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${HOME_DIR}/data" "${HOME_DIR}/config"
 if [[ ! -f "${HOME_DIR}/config/nginx.conf" ]]; then
     install -o "$SERVICE_USER" -g "$SERVICE_USER" -m 0644 "$NGINX_SRC" "${HOME_DIR}/config/nginx.conf"
