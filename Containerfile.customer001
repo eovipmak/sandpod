@@ -1,0 +1,82 @@
+FROM quay.io/almalinuxorg/almalinux:10
+
+RUN dnf -y install dnf-plugins-core epel-release \
+    && dnf config-manager --set-enabled crb \
+    && dnf -y install \
+        cronie \
+        gcc \
+        gcc-c++ \
+        git \
+        htop \
+        iotop-c \
+        jq \
+        make \
+        mariadb \
+        nginx \
+        nodejs \
+        nodejs24 \
+        openssh-server \
+        php-cli \
+        php-fpm \
+        php-mbstring \
+        php-mysqlnd \
+        php-opcache \
+        php-xml \
+        pkgconf-pkg-config \
+        python3.13 \
+        rsync \
+        supervisor \
+        sysstat \
+        tar \
+        unzip \
+        wget \
+        curl \
+    && dnf clean all \
+    && rm -rf /var/cache/dnf
+
+RUN dnf -y install https://rpms.remirepo.net/enterprise/remi-release-10.rpm \
+    && dnf -y install \
+        php82-php-cli \
+        php82-php-fpm \
+        php82-php-mbstring \
+        php82-php-mysqlnd \
+        php82-php-opcache \
+        php82-php-xml \
+        php84-php-cli \
+        php84-php-fpm \
+        php84-php-mbstring \
+        php84-php-mysqlnd \
+        php84-php-opcache \
+        php84-php-xml \
+    && dnf clean all \
+    && rm -rf /var/cache/dnf
+
+RUN useradd --create-home --shell /bin/bash customer \
+    && password="$(openssl rand -base64 48)" \
+    && usermod --password "$(openssl passwd -6 "$password")" customer \
+    && unset password \
+    && install -d -o customer -g customer -m 0700 /home/customer/.ssh \
+    && touch /home/customer/.ssh/authorized_keys \
+    && chown customer:customer /home/customer/.ssh/authorized_keys \
+    && chmod 0600 /home/customer/.ssh/authorized_keys \
+    && install -d -m 0755 \
+        /run/sshd \
+        /run/php-fpm \
+        /var/opt/remi/php82/run/php-fpm \
+        /var/opt/remi/php84/run/php-fpm \
+        /srv/customer/public \
+        && ssh-keygen -A
+
+COPY container/sshd_config /etc/ssh/sshd_config
+COPY container/nginx.conf /etc/nginx/nginx.conf
+COPY container/supervisord.conf /etc/supervisord.conf
+COPY container/index.html /srv/customer/public/index.html
+
+RUN sed -ri 's|^;?listen = .*|listen = 127.0.0.1:9000|' /etc/php-fpm.d/www.conf \
+    && sed -ri 's|^listen = .*|listen = 127.0.0.1:9082|' /etc/opt/remi/php82/php-fpm.d/www.conf \
+    && sed -ri 's|^listen = .*|listen = 127.0.0.1:9084|' /etc/opt/remi/php84/php-fpm.d/www.conf \
+    && nginx -t \
+    && /usr/sbin/sshd -t
+
+EXPOSE 80 22
+CMD ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisord.conf"]
