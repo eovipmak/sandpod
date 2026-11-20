@@ -8,6 +8,7 @@ ContainerName=customer001
 PublishPort=127.0.0.1:18001:80
 PublishPort=127.0.0.1:22201:22
 Volume=/home/svc-c001/data:/srv/customer:Z
+Volume=/home/svc-c001/config:/etc/sandpod-config:ro,Z
 UserNS=keep-id:uid=1000,gid=1000
 User=0:0
 Memory=1g
