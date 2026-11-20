@@ -19,9 +19,13 @@ This module builds the first rootless customer container prototype.
 | PHP | 8.2 | `php82`, FPM `127.0.0.1:9082`, host runtime mount |
 | PHP | 8.3 | `php83` / default `php`, FPM `127.0.0.1:9000`, host runtime mount |
 | PHP | 8.4 | `php84`, FPM `127.0.0.1:9084`, host runtime mount |
-| Node.js | 22 | `node`, `npm` |
+| PHP | 8.5 | `php85`, FPM `127.0.0.1:9085`, host runtime mount |
+| Node.js | 22 | `node` / `node-22`, `npm` |
 | Node.js | 24 | `node-24`, `npm-24` |
+| Node.js | 26 | `node-26`, `npm-26` |
+| Python | 3.12 | `python3` / `python3.12` (system) |
 | Python | 3.13 | `python3.13` |
+| Python | 3.14 | `python3.14` |
 
 PHP executables and extensions are not in the image. They come from the host's
 read-only Remi SCL mounts, managed by the
@@ -74,6 +78,7 @@ running, verify each route from the host:
 curl -H 'Host: php82.test' http://127.0.0.1:18001/index.php
 curl -H 'Host: php83.test' http://127.0.0.1:18001/index.php
 curl -H 'Host: php84.test' http://127.0.0.1:18001/index.php
+curl -H 'Host: php85.test' http://127.0.0.1:18001/index.php
 ```
 
 The response identifies the PHP version. To change a site's version, update
@@ -89,5 +94,5 @@ per-customer PHP-FPM master using the shared-runtime module's host helper.
 
 The pilot does not yet provide XFS project quotas, host Nginx integration,
 MariaDB connectivity, automated fleet-wide rollout/rollback, log rotation
-policy, or full runtime matrices (Node 20/22/24, Python 3.11/3.12/3.13). Disk
+policy, or host Nginx/MariaDB wiring and fleet-wide rollout/rollback. Disk
 quota and data backup must be implemented before production use.

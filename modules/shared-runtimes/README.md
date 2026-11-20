@@ -8,11 +8,12 @@ PHP-FPM master and workers inside its rootless container.
 
 - PHP 8.2: `/opt/remi/php82/root/usr`, config `/etc/opt/remi/php82`
 - PHP 8.3: `/opt/remi/php83/root/usr`, config `/etc/opt/remi/php83`
-- PHP 8.4: `/opt/remi/php84/root/usr`, config `/etc/opt/remi/php84`
+- PHP 8.5: `/opt/remi/php85/root/usr`, config `/etc/opt/remi/php85`
 
 The RPM package manager keeps the newest patch installed for each minor
-namespace. The customer-facing selection remains 8.2, 8.3, or 8.4; patch
-display can be added to the control panel later.
+namespace. The customer-facing selection is 8.2, 8.3, 8.4, or 8.5; patch
+display can be added to the control panel later. PHP 8.0/8.1 are end-of-life
+and intentionally omitted; PHP 8.6 is too new for this prototype.
 
 ## Install
 
@@ -50,6 +51,6 @@ customer using the customer-to-service-account/container mapping.
 
 ## Scope
 
-PHP 8.2, 8.3, and 8.4 use shared read-only host runtimes. Node.js and Python
+PHP 8.2, 8.3, 8.4, and 8.5 use shared read-only host runtimes. Node.js and Python
 remain in the customer image until equivalent shared runtime bundles and
 per-application reload hooks are implemented.

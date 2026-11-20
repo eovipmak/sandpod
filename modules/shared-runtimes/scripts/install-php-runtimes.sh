@@ -13,7 +13,9 @@ dnf install -y \
     php83-php-cli php83-php-fpm php83-php-mbstring php83-php-mysqlnd \
     php83-php-opcache php83-php-xml \
     php84-php-cli php84-php-fpm php84-php-mbstring php84-php-mysqlnd \
-    php84-php-opcache php84-php-xml
+    php84-php-opcache php84-php-xml \
+    php85-php-cli php85-php-fpm php85-php-mbstring php85-php-mysqlnd \
+    php85-php-opcache php85-php-xml
 
 if command -v getenforce >/dev/null && [[ "$(getenforce)" == "Enforcing" ]]; then
     if ! command -v semanage >/dev/null; then

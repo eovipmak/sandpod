@@ -7,8 +7,9 @@ case "$version" in
     8.2) runtime="php82"; service="php82-fpm" ;;
     8.3) runtime="php83"; service="php83-fpm" ;;
     8.4) runtime="php84"; service="php84-fpm" ;;
+    8.5) runtime="php85"; service="php85-fpm" ;;
     *)
-        echo "Usage: sandpod-runtime-reload {8.2|8.3|8.4}" >&2
+        echo "Usage: sandpod-runtime-reload {8.2|8.3|8.4|8.5}" >&2
         exit 2
         ;;
 esac

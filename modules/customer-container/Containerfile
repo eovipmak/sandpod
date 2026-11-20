@@ -16,10 +16,16 @@ RUN dnf -y install dnf-plugins-core epel-release \
         libxslt \
         nginx \
         nodejs \
+        nodejs-npm \
         nodejs24 \
+        nodejs24-npm \
+        nodejs26 \
+        nodejs26-npm \
         openssh-server \
         pkgconf-pkg-config \
+        python3 \
         python3.13 \
+        python3.14 \
         rsync \
         supervisor \
         sysstat \
@@ -64,6 +70,7 @@ RUN supervisor_password="$(openssl rand -hex 32)" \
     && ln -s /opt/remi/php82/root/usr/bin/php /usr/local/bin/php82 \
     && ln -s /opt/remi/php83/root/usr/bin/php /usr/local/bin/php83 \
     && ln -s /opt/remi/php84/root/usr/bin/php /usr/local/bin/php84 \
+    && ln -s /opt/remi/php85/root/usr/bin/php /usr/local/bin/php85 \
     && ln -s /usr/local/bin/php83 /usr/local/bin/php \
     && ln -sfn /etc/sandpod-config/nginx.conf /etc/nginx/nginx.conf \
     && nginx -t \

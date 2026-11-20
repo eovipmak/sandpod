@@ -23,7 +23,7 @@ php_minor="$3"
     echo "Invalid container name." >&2
     exit 2
 }
-[[ "$php_minor" =~ ^8\.(2|3|4)$ ]] || {
+[[ "$php_minor" =~ ^8\.(2|3|4|5)$ ]] || {
     echo "Unsupported PHP minor version." >&2
     exit 2
 }
