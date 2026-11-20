@@ -1,0 +1,21 @@
+[Unit]
+Description=Rootless customer container %i
+After=network-online.target
+
+[Container]
+Image=localhost/sandpod/customer-runtime:pilot
+ContainerName=customer-%i
+Volume=%h/data:/srv/customer:Z
+Volume=%h/config:/etc/sandpod-config:ro,Z
+UserNS=keep-id:uid=1000,gid=1000
+User=0:0
+Memory=1g
+PidsLimit=512
+
+[Service]
+Restart=always
+TimeoutStartSec=900
+CPUQuota=100%
+
+[Install]
+WantedBy=default.target

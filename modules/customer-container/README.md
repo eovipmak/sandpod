@@ -6,7 +6,9 @@ This module builds the first rootless customer container prototype.
 
 - `Containerfile`: AlmaLinux 10 image and customer-side packages.
 - `config/`: SSH, internal Nginx, and process-supervisor configuration.
-- `quadlet/customer001.container`: pilot rootless Podman service definition.
+- `quadlet/customer@.container`: reusable rootless Podman template.
+- `quadlet/customer@001.container`: pilot instance symlink.
+- `quadlet/customer@001.container.d/`: pilot-specific host ports.
 - `examples/pilot-site/`: test HTML and PHP endpoints.
 
 ## Runtime matrix
@@ -30,19 +32,29 @@ host by this module.
 Build the image **as the rootless service account**, from this directory:
 
 ```sh
-podman build -t localhost/customer001:pilot .
+podman build -t localhost/sandpod/customer-runtime:pilot .
 ```
 
-Install `quadlet/customer001.container` into the service account's
-`~/.config/containers/systemd/` directory, then reload and start it with that
-account's user systemd manager. Copy `config/nginx.conf` into
-`/home/svc-c001/config/`; Quadlet bind-mounts that directory read-only so an
-operator can atomically replace the config without rebuilding the image. The
-current pilot uses:
+For each customer, create a **separate rootless service account** with its own
+Podman storage and user systemd manager. Install the template, the instance
+symlink, and that instance's `.container.d` drop-in under
+`~/.config/containers/systemd/`. Create `~/data` and `~/config`, copy
+`config/nginx.conf` into `~/config/nginx.conf`, then run:
+
+```sh
+systemctl --user daemon-reload
+systemctl --user start 'customer@001.service'
+```
+
+The instance drop-in assigns unique loopback ports. The template uses `%h` for
+the service account's private data/config directories and `%i` for the
+container name. For another customer, provision that customer's own service
+account and data/config directories, add an instance symlink/drop-in, and
+assign unused ports. The current pilot uses:
 
 - web: `127.0.0.1:18001`;
 - SSH: `127.0.0.1:22201`;
-- data: `/home/svc-c001/data`;
+- data/config: `/home/svc-c001/data` and `/home/svc-c001/config`;
 - limits: 1 CPU, 1 GiB RAM, 512 processes.
 
 Both ports are loopback-only. The image disables SSH password authentication;
