@@ -10,9 +10,12 @@ RUN dnf -y install dnf-plugins-core epel-release \
         git \
         htop \
         iotop-c \
+        iproute \
         jq \
         make \
         mariadb \
+        ncdu \
+        net-tools \
         libxslt \
         nginx \
         nodejs \
@@ -23,6 +26,7 @@ RUN dnf -y install dnf-plugins-core epel-release \
         nodejs26-npm \
         openssh-server \
         pkgconf-pkg-config \
+        procps-ng \
         python3 \
         python3.13 \
         python3.14 \
@@ -50,7 +54,7 @@ RUN useradd --create-home --shell /bin/bash customer \
         /etc/sandpod/php-fpm \
         /etc/opt/remi \
         /opt/remi \
-        /srv/customer/public \
+        /srv/customer/public_html \
         /usr/lib64 \
     && install -m 0644 /dev/null /usr/lib64/libonig.so.105 \
     && ssh-keygen -A
@@ -59,7 +63,7 @@ COPY config/sshd_config /etc/ssh/sshd_config
 COPY config/nginx.conf /etc/sandpod-config/nginx.conf
 COPY config/supervisord.conf /etc/supervisord.conf
 COPY config/php-fpm/ /etc/sandpod/php-fpm/
-COPY config/default-index.html /srv/customer/public/index.html
+COPY config/default-index.html /srv/customer/public_html/index.html
 COPY scripts/runtime-reload /usr/local/bin/sandpod-runtime-reload
 
 RUN supervisor_password="$(openssl rand -hex 32)" \

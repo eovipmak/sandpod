@@ -1,0 +1,52 @@
+# Control panel contract
+
+Boundary between this repo (mechanism) and the future control panel
+(policy). The image never contains customer domains, site data, or per-site
+configuration. The panel owns everything customer-specific.
+
+## Guaranteed by the image (stable interface)
+
+The panel may rely on these without inspecting image internals:
+
+- Mounts: `~/data` → `/srv/customer` (writable), `~/config` →
+  `/etc/sandpod-config` (read-only inside the container, so the panel must
+  edit the host-side files), host PHP runtimes read-only at `/opt/remi`,
+  `/etc/opt/remi`, `/usr/lib64/libonig.so.105`.
+- PHP-FPM listeners (fixed ports, one master per minor):
+  8.2 → `127.0.0.1:9082`, 8.3 → `127.0.0.1:9000`, 8.4 → `127.0.0.1:9084`,
+  8.5 → `127.0.0.1:9085`.
+- CLI binaries: `php82/83/84/85` (`php` = 8.3), `node`/`node-22` (22),
+  `node-24`, `node-26` with matching `npm`/`npm-24`/`npm-26`,
+  `python3.12`/`python3.13`/`python3.14` (`python3` = 3.12).
+- Supervisord services: `sshd`, `crond`, `php82-fpm`, `php83-fpm`,
+  `php84-fpm`, `php85-fpm`, `nginx`.
+- Nginx variables with defaults: `$site_root` defaults to
+  `/srv/customer/public_html`; `$php_fpm_backend` defaults to
+  `127.0.0.1:9000` (PHP 8.3). Both maps live in the mounted
+  `~/config/nginx.conf`.
+- Reload helpers: in-container `sandpod-runtime-reload {8.2|8.3|8.4|8.5}`
+  (config-test + `USR2` to one FPM master); host-side
+  `shared-runtimes/scripts/reload-customer-php.sh <service-user>
+  <container> <minor>` which calls it via `podman exec`.
+- The `php8X.test` hostnames in the shipped `nginx.conf` are pilot test
+  fixtures only, not production domains.
+
+## Owned by the panel (not in this repo)
+
+- Site directories: primary domain in `~/data/public_html`, each add-on
+  domain in `~/data/<domain>`.
+- `~/config/nginx.conf` map entries: which `Host` serves which directory
+  (`$site_root`) and which PHP version (`$php_fpm_backend`), plus any
+  `proxy_pass` blocks for customer port apps (Node/Python).
+- Customer port apps: choosing the runtime binary, starting/stopping the
+  process, keeping it alive, and reloading Nginx afterwards
+  (`nginx -t` then `nginx -s reload` via `podman exec`).
+- Per-customer provisioning: service account, ports, `~/data` + `~/config`
+  (copy the shipped `nginx.conf` as a starting template), SSH keys,
+  health checks, and batched PHP patch rollouts.
+
+## Out of scope for the image
+
+Customer domains, app code, per-site Nginx blocks, process management for
+customer apps, TLS, database wiring, quotas, and backups. Those belong to
+the panel / provisioning / host-nginx / host-mariadb modules.

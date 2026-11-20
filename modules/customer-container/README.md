@@ -86,6 +86,19 @@ its `map` entry in the mounted Nginx config, then run `nginx -t` and reload
 Nginx inside the container. The hostnames above are test values, not
 production domains.
 
+## Site directories
+
+cPanel-style layout inside the mounted data directory:
+
+- primary domain: `~/data/public_html`
+- add-on domain: `~/data/<domain>`, e.g. `~/data/shop.example.com`
+
+Nginx maps each `Host` to its directory via `$site_root` (default
+`public_html`) and to its PHP version via `$php_fpm_backend`. Both maps live
+in the mounted `~/config/nginx.conf`, so the control panel manages domains by
+editing that file and reloading Nginx inside the container. No image rebuild
+needed per site.
+
 ## Not production-complete
 
 PHP executables/configuration are mounted read-only from host runtime prefixes.
