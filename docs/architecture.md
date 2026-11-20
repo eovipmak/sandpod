@@ -27,8 +27,9 @@ Host services and customer workloads have separate lifecycles:
 - Each customer gets a dedicated unprivileged host account that owns its
   rootless Podman storage and systemd user units. Customer SSH must terminate
   in that customer's container, not in a general-purpose host shell.
-- CPU and memory limits use cgroups v2. Disk limits must cover both customer
-  data and container storage; the prototype still needs XFS project quotas.
+- CPU and memory limits use cgroups v2. Disk limits cover both customer
+  data and container storage via XFS project quotas, one project per
+  service account (see `host-storage`).
 - Websites within one customer intentionally share a container and filesystem.
   Website-specific PHP-FPM pools and database credentials do not make websites
   security-isolated from one another.
@@ -39,10 +40,12 @@ Host services and customer workloads have separate lifecycles:
 | --- | --- | --- |
 | `customer-container` | Customer image, runtime processes, and rootless Quadlet | Prototype |
 | `shared-runtimes` | Host Remi PHP RPMs mounted read-only into customers | PHP prototype |
-| `host-nginx` | Host TLS and customer/site reverse-proxy configuration | Planned |
-| `host-mariadb` | Shared DB service, per-site accounts, backup and restore | Planned |
-| `customer-provisioning` | Create accounts, storage, limits, keys, and service units | Planned |
-| `monitoring-backup` | Resource monitoring, logs, and backup orchestration | Planned |
+| `host-nginx` | Host TLS and customer/site reverse-proxy configuration | Prototype scripts |
+| `host-mariadb` | Shared DB service, per-site accounts, backup and restore | Prototype scripts |
+| `customer-provisioning` | Create accounts, storage, limits, keys, and service units | Prototype scripts |
+| `customer-apps` | Per-site mechanism (nginx maps, PHP version, data dirs) for the panel | Prototype scripts |
+| `host-storage` | XFS project quotas per customer (soft 8G / hard 10G) | Enforcing |
+| `monitoring-backup` | Resource monitoring, logs, and backup orchestration | Prototype scripts |
 
 ## Runtime selection
 

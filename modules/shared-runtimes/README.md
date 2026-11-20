@@ -8,6 +8,7 @@ PHP-FPM master and workers inside its rootless container.
 
 - PHP 8.2: `/opt/remi/php82/root/usr`, config `/etc/opt/remi/php82`
 - PHP 8.3: `/opt/remi/php83/root/usr`, config `/etc/opt/remi/php83`
+- PHP 8.4: `/opt/remi/php84/root/usr`, config `/etc/opt/remi/php84`
 - PHP 8.5: `/opt/remi/php85/root/usr`, config `/etc/opt/remi/php85`
 
 The RPM package manager keeps the newest patch installed for each minor

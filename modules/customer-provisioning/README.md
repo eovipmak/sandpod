@@ -1,0 +1,80 @@
+# Customer provisioning
+
+Automates the manual steps from `customer-container/README.md`: one dedicated
+unprivileged host account per customer, rootless Quadlet units, `~/data` +
+`~/config`, loopback ports, SSH key injection, and a fleet registry.
+
+## Dependencies
+
+* `../customer-container/quadlet/customer@.container` - unit template (copied).
+* `../customer-container/config/nginx.conf` - seed for `~/config/nginx.conf`.
+* `../customer-container/config/default-index.html` + `examples/pilot-site/index.php` - seed `public_html/`.
+* Image `localhost/sandpod/customer-runtime:pilot` built beforehand.
+
+## Scripts (run as root)
+
+```sh
+# New customer 002: auto ports (18002/22202), quota 10G, start immediately:
+sudo modules/customer-provisioning/scripts/provision-customer.sh 002
+
+# Pin ports + key:
+sudo modules/customer-provisioning/scripts/provision-customer.sh 003 \
+  --service-user svc-c003 --web-port 18003 --ssh-port 22203 \
+  --ssh-key ~/.ssh/id_rsa.pub
+
+# Verify (pilot map fixtures):
+modules/customer-provisioning/scripts/health-check.sh 18002
+
+# Add/rotate a key later (container /home/customer is ephemeral):
+sudo modules/customer-provisioning/scripts/add-ssh-key.sh svc-c002 customer-002 ~/.ssh/id_rsa.pub
+
+# Remove service, keep data (default). Add --delete-data / --delete-user to wipe:
+sudo modules/customer-provisioning/scripts/remove-customer.sh 002
+```
+
+`provision-customer.sh` does: `useradd -s /sbin/nologin` (reuse if exists) ->
+`loginctl enable-linger` -> install `~/.config/containers/systemd/customer@.container`
++ symlink `customer@<id>.container` + `.container.d/10-instance.conf`
+(`Image` + `PublishPort 127.0.0.1:<web>:80 / <ssh>:22`) -> `~/data/public_html`
++ `~/config/nginx.conf` (kept if exists) -> `systemctl --user daemon-reload +
+restart/enable` -> optional `add-ssh-key.sh` -> append `/etc/sandpod/customers.tsv`
+(`instance, service_user, container, web_port, ssh_port, image`).
+
+Port auto-allocation: `18000+id` / `22200+id`, bumped past `ss` listeners and
+registry entries. Use `--force` to reuse a port `ss` sees.
+
+## Registry
+
+Live mapping at `/etc/sandpod/customers.tsv` (see
+`config/registry.tsv.example`). Fleet helpers (`shared-runtimes` reload,
+future `monitoring-backup`) iterate this file as `service_user -> container`
+source of truth - never probe containers.
+
+Pilot `001/svc-c001` predates this module; register it manually:
+
+```sh
+sudo mkdir -p /etc/sandpod
+printf '001\tsvc-c001\tcustomer-001\t18001\t22201\tlocalhost/sandpod/customer-runtime:pilot\n' \
+  | sudo tee -a /etc/sandpod/customers.tsv
+```
+
+## Rollback
+
+* Provision failed pre-start: re-run same command (idempotent), or
+  `remove-customer.sh <id>` then retry.
+* Wrong ports/image: edit `<unit>.container.d/10-instance.conf`, re-run
+  `provision-customer.sh <id>` with corrected flags (rewrites drop-in,
+  restarts unit).
+* Full wipe: `remove-customer.sh <id> --delete-data --delete-registry-entry`
+  (add `--delete-user` to drop the account; requires `--delete-data`).
+
+## Gotchas
+
+* Service accounts use `/sbin/nologin` - host SSH always fails; customer SSH
+  terminates in the container (`AllowUsers customer`). That is intentional.
+* `/home/customer/.ssh/authorized_keys` lives in container storage, not in
+  `~/data`. Re-apply keys after container recreate.
+* Pilot `svc-c001` still mounts an older `nginx.conf`
+  (`root /srv/customer/public`, no `$site_root`/php85 map). New customers get
+  the current template (`root $site_root`, `public_html`). Do not overwrite
+  pilot's config automatically - diff and migrate via control panel.

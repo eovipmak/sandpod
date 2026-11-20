@@ -36,11 +36,22 @@ The panel may rely on these without inspecting image internals:
 - Site directories: primary domain in `~/data/public_html`, each add-on
   domain in `~/data/<domain>`.
 - `~/config/nginx.conf` map entries: which `Host` serves which directory
-  (`$site_root`) and which PHP version (`$php_fpm_backend`), plus any
-  `proxy_pass` blocks for customer port apps (Node/Python).
+  (`$site_root`) and which PHP version (`$php_fpm_backend`). Use the
+  `customer-apps` module scripts (`add-site.sh`, `set-php-version.sh`,
+  `remove-site.sh`, `list-sites.sh`) - never hand-edit with `sed`. Port
+  apps (`proxy_pass` for Node/Python): NOT expressible in the current image,
+  see `modules/customer-apps/README.md` ("Not yet"); until the planned
+  `sites/*.conf` include lands, port apps stay panel experiments via
+  `podman exec`, not a supported path.
 - Customer port apps: choosing the runtime binary, starting/stopping the
   process, keeping it alive, and reloading Nginx afterwards
   (`nginx -t` then `nginx -s reload` via `podman exec`).
+- App port allocation: each customer app listens on `127.0.0.1` only, one
+  port per app from range `3000-3999`. The panel allocates ports from this
+  range and records them in its own database (source of truth, never probe the
+  container). Wiring those ports into Nginx awaits the `sites/*.conf` include
+  (see `customer-apps` README); app ports are loopback-only; nothing
+  customer-run is reachable except through the container's Nginx on port 80.
 - Per-customer provisioning: service account, ports, `~/data` + `~/config`
   (copy the shipped `nginx.conf` as a starting template), SSH keys,
   health checks, and batched PHP patch rollouts.
