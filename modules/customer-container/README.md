@@ -20,6 +20,7 @@ This module builds the first rootless customer container prototype.
 | PHP | 8.3 | `php83` / default `php`, FPM `127.0.0.1:9000`, host runtime mount |
 | PHP | 8.4 | `php84`, FPM `127.0.0.1:9084`, host runtime mount |
 | PHP | 8.5 | `php85`, FPM `127.0.0.1:9085`, host runtime mount |
+| PHP | 8.6 | `php86`, FPM `127.0.0.1:9086`, host runtime mount |
 | Node.js | 22 | `node` / `node-22`, `npm` |
 | Node.js | 24 | `node-24`, `npm-24` |
 | Node.js | 26 | `node-26`, `npm-26` |
@@ -79,6 +80,7 @@ curl -H 'Host: php82.test' http://127.0.0.1:18001/index.php
 curl -H 'Host: php83.test' http://127.0.0.1:18001/index.php
 curl -H 'Host: php84.test' http://127.0.0.1:18001/index.php
 curl -H 'Host: php85.test' http://127.0.0.1:18001/index.php
+curl -H 'Host: php86.test' http://127.0.0.1:18001/index.php
 ```
 
 The response identifies the PHP version. To change a site's version, update

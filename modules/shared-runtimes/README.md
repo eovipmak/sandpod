@@ -10,11 +10,13 @@ PHP-FPM master and workers inside its rootless container.
 - PHP 8.3: `/opt/remi/php83/root/usr`, config `/etc/opt/remi/php83`
 - PHP 8.4: `/opt/remi/php84/root/usr`, config `/etc/opt/remi/php84`
 - PHP 8.5: `/opt/remi/php85/root/usr`, config `/etc/opt/remi/php85`
+- PHP 8.6: `/opt/remi/php86/root/usr`, config `/etc/opt/remi/php86`
 
 The RPM package manager keeps the newest patch installed for each minor
-namespace. The customer-facing selection is 8.2, 8.3, 8.4, or 8.5; patch
+namespace. The customer-facing selection is 8.2, 8.3, 8.4, 8.5, or 8.6;
+patch
 display can be added to the control panel later. PHP 8.0/8.1 are end-of-life
-and intentionally omitted; PHP 8.6 is too new for this prototype.
+and intentionally omitted.
 
 ## Install
 
@@ -52,6 +54,9 @@ customer using the customer-to-service-account/container mapping.
 
 ## Scope
 
-PHP 8.2, 8.3, 8.4, and 8.5 use shared read-only host runtimes. Node.js and Python
-remain in the customer image until equivalent shared runtime bundles and
-per-application reload hooks are implemented.
+PHP 8.2, 8.3, 8.4, 8.5, and 8.6 use shared read-only host runtimes. Node.js 22/24/26
+uses shared read-only host trees at `/opt/sandpod/node/<major>` (see
+`scripts/install-node-runtimes.sh`, quadlet mount, `reload-customer-app.sh`
+for `supervisorctl restart` after an update). Python 3.12/3.13/3.14 still
+ships in the image; the interim is host RPMs (`install-python-runtimes.sh`)
+with a TODO for self-contained `/opt/sandpod/python/<ver>` prefixes.

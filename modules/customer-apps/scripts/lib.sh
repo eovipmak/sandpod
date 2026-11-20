@@ -53,7 +53,15 @@ valid_domain() {
     [[ "${1,,}" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$ ]]
 }
 
-valid_minor() { [[ "$1" =~ ^8\.[2-5]$ ]]; }
+valid_minor() { [[ "$1" =~ ^8\.[2-6]$ ]]; }
+
+# PHP minors near end of security support. Warn on stderr, never fail:
+# the panel decides policy, these scripts only execute it.
+eol_warn_for_minor() {
+    case "$1" in
+        8.2) echo "WARNING: PHP $1 security support ends Dec 2026; prefer 8.3+ for new sites." >&2 ;;
+    esac
+}
 
 valid_port() { [[ "$1" =~ ^[0-9]+$ ]] && [[ "$1" -ge 3000 && "$1" -le 3999 ]]; }
 
@@ -96,6 +104,7 @@ backend_for_minor() {
         8.3) echo "127.0.0.1:9000" ;;
         8.4) echo "127.0.0.1:9084" ;;
         8.5) echo "127.0.0.1:9085" ;;
+    8.6) echo "127.0.0.1:9086" ;;
         *) echo "Unsupported minor: $1" >&2; return 2 ;;
     esac
 }

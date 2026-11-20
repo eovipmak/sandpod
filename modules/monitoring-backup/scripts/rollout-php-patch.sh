@@ -6,7 +6,7 @@
 # Usage: rollout-php-patch.sh [--batch-size 5] [--sleep-seconds 10]
 #   [--minor 8.3]... [--skip-update] [--registry /etc/sandpod/customers.tsv]
 #
-# Default: all minors 8.2/8.3/8.4/8.5, batch-size 5.
+# Default: all minors 8.2/8.3/8.4/8.5/8.6, batch-size 5.
 set -euo pipefail
 
 BATCH=5; SLEEP_S=10; SKIP_UPDATE=0
@@ -26,7 +26,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 RELOAD="${REPO_ROOT}/modules/shared-runtimes/scripts/reload-customer-php.sh"
 HEALTH="${REPO_ROOT}/modules/customer-provisioning/scripts/health-check.sh"
 
-[[ ${#MINORS[@]} -gt 0 ]] || MINORS=(8.2 8.3 8.4 8.5)
+[[ ${#MINORS[@]} -gt 0 ]] || MINORS=(8.2 8.3 8.4 8.5 8.6)
 [[ -f "$REGISTRY" ]] || { echo "Missing $REGISTRY." >&2; exit 1; }
 
 if [[ "$SKIP_UPDATE" -eq 0 ]]; then

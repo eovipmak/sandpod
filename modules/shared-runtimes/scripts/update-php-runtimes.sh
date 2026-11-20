@@ -11,6 +11,7 @@ dnf upgrade -y \
     'php83-*' \
     'php84-*' \
     'php85-*' \
+    'php86-*' \
     oniguruma5php
 
 if command -v getenforce >/dev/null && [[ "$(getenforce)" == "Enforcing" ]]; then

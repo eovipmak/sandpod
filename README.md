@@ -27,7 +27,7 @@ documentation. Shared design decisions belong in `docs/`.
 `modules/customer-container/` is a working single-customer prototype based on
 the reusable `customer@.container` Quadlet template. It runs rootless, has its
 own filesystem tree, and includes SSH, cron, an internal Nginx gateway,
-PHP-FPM 8.2/8.3/8.4/8.5, Node.js 22/24/26, Python 3.12/3.13/3.14, and
+PHP-FPM 8.2/8.3/8.4/8.5/8.6, Node.js 22/24/26, Python 3.12/3.13/3.14, and
 development tools. Nginx selects a PHP-FPM version by hostname.
 
 PHP binaries/extensions are host-managed read-only mounts; each customer still

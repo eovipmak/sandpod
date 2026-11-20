@@ -3,7 +3,7 @@
 # Run as root. Idempotent.
 # Usage: set-php-version.sh <service-user> <container> <domain|default> <minor>
 set -euo pipefail
-[[ $# -eq 4 ]] || { echo "Usage: $0 <service-user> <container> <domain|default> <8.2|8.3|8.4|8.5>" >&2; exit 2; }
+[[ $# -eq 4 ]] || { echo "Usage: $0 <service-user> <container> <domain|default> <minor: 8.2-8.6>" >&2; exit 2; }
 SERVICE_USER="$1"; CONTAINER="$2"; DOMAIN="${3,,}"; MINOR="$4"
 [[ "${EUID}" -eq 0 ]] || { echo "Run as root." >&2; exit 1; }
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -18,7 +18,8 @@ if [[ "$DOMAIN" != "default" ]]; then
         exit 1
     fi
 fi
-valid_minor "$MINOR" || { echo "Unsupported PHP minor (8.2-8.5): $MINOR" >&2; exit 2; }
+valid_minor "$MINOR" || { echo "Unsupported PHP minor (8.2-8.6): $MINOR" >&2; exit 2; }
+eol_warn_for_minor "$MINOR"
 BACKEND="$(backend_for_minor "$MINOR")"
 
 cp -a "$NGINX_CONF" "${NGINX_CONF}.bak"

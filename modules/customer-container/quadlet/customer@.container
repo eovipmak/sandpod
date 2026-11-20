@@ -10,6 +10,9 @@ Volume=%h/config:/etc/sandpod-config:ro,Z
 Volume=/opt/remi:/opt/remi:ro
 Volume=/etc/opt/remi:/etc/opt/remi:ro
 Volume=/usr/lib64/libonig.so.105:/usr/lib64/libonig.so.105:ro
+# Shared Node.js runtimes (host-managed, see shared-runtimes module).
+# Mounted read-only; when absent the image nodejs RPMs are the fallback.
+Volume=/opt/sandpod/node:/opt/sandpod/node:ro
 UserNS=keep-id:uid=1000,gid=1000
 User=0:0
 Memory=1g

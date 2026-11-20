@@ -18,7 +18,7 @@ sudo modules/customer-apps/scripts/add-site.sh svc-c001 customer-001 example.com
 
 # Change version / remove / inspect:
 sudo modules/customer-apps/scripts/set-php-version.sh svc-c002 customer-002 shop.example.com 8.5
-sudo modules/customer-apps/scripts/list-sites.sh svc-c002 customer-002
+sudo modules/customer-apps/scripts/list-sites.sh svc-c002 customer-002 [--json]
 sudo modules/customer-apps/scripts/remove-site.sh svc-c002 customer-002 shop.example.com [--delete-data]
 ```
 

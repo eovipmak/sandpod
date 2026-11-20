@@ -20,7 +20,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib.sh"
 
 valid_domain "$DOMAIN" || { echo "Invalid domain: $DOMAIN" >&2; exit 2; }
-valid_minor "$PHP_MINOR" || { echo "Unsupported PHP minor (8.2-8.5): $PHP_MINOR" >&2; exit 2; }
+valid_minor "$PHP_MINOR" || { echo "Unsupported PHP minor (8.2-8.6): $PHP_MINOR" >&2; exit 2; }
+eol_warn_for_minor "$PHP_MINOR"
 BACKEND="$(backend_for_minor "$PHP_MINOR")"
 
 if [[ "$PRIMARY" -eq 1 ]]; then

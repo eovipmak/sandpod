@@ -47,6 +47,6 @@ offline without touching others: `mv sandpod-002.conf ~root/ && reload`.
 
 ## Not handled here
 
-Rate limiting, WAF, per-site caching, and HTTP/3 - add under this module
-once a production domain set is known. Status: prototype scripts, no TLS
+Rate limiting, WAF, per-site caching, and HTTP/3 are out of scope for this
+repo - owned by another team. Status: prototype scripts, no TLS
 certs provisioned yet in this environment.
