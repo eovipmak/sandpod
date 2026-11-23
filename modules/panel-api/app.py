@@ -1,4 +1,5 @@
-"""SandPod panel-api (FastAPI). Mechanism only — wraps modules/*/scripts/*.sh.
+"""SandPod panel-api (FastAPI). Mechanism only — wraps the sandpodctl Go binary
+(same argv as the legacy modules/*/scripts/*.sh).
 
 Run as root on host, loopback-only. Panel (same host) calls 127.0.0.1:8741.
 Auth: Bearer token file (0600). /v1/health is public for systemd/readiness.

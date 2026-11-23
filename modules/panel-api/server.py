@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 """SandPod panel-api daemon (stdlib only, run as root, loopback-only).
 
-Thin wrap over modules/*/scripts/*.sh. No policy, no TLS issuance.
-Sync ops run scripts inline; long ops (provision/remove/backup/rollout/db)
+Thin wrap over the sandpodctl Go binary (same argv as legacy
+modules/*/scripts/*.sh). No policy, no TLS issuance.
+Sync ops run inline; long ops (provision/remove/backup/rollout/db)
 run as background jobs, poll via GET /v1/jobs/{id}.
 
 Env:
+  SANDPOD_SANDPODCTL    backend binary (default: repo modules/sandpodctl/sandpodctl,
+                        else /usr/local/bin/sandpodctl); fixture tests point it
+                        at a fake. SANDPOD_BACKEND=scripts restores legacy .sh.
   SANDPOD_TOKEN_FILE   bearer token file (0600), default /etc/sandpod/panel-api.token
   SANDPOD_REGISTRY      default /etc/sandpod/customers.tsv
-  SANDPOD_SCRIPT_DIR    repo scripts root (for fixture tests)
+  SANDPOD_SCRIPT_DIR    legacy repo scripts root (rollback backend only)
   SANDPOD_PORT          default 8741 (always binds 127.0.0.1)
 """
 import json
@@ -24,7 +28,30 @@ from urllib.parse import parse_qs, urlparse
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 # Daemon self-protection (same rationale as app.py MAX_BODY_BYTES).
 MAX_BODY_BYTES = int(os.environ.get("SANDPOD_MAX_BODY_BYTES", "1048576"))
-SCRIPT = {
+# Logical op -> sandpodctl subcommand (1:1 with legacy scripts, same argv).
+SUBCOMMANDS = {
+    "provision": "provision-customer",
+    "remove": "remove-customer",
+    "add_key": "add-ssh-key",
+    "health": "health-check",
+    "add_site": "add-site",
+    "set_php": "set-php-version",
+    "remove_site": "remove-site",
+    "list_sites": "list-sites",
+    "add_port": "add-port-app",
+    "remove_port": "remove-port-app",
+    "reload_php": "reload-customer-php",
+    "reload_app": "reload-customer-app",
+    "mkdb": "create-site-db",
+    "gen_nginx": "generate-site-conf",
+    "reload_nginx": "reload-host-nginx",
+    "backup": "backup-customer",
+    "report": "resource-report",
+    "rollout_php": "rollout-php-patch",
+    "rollout_app": "rollout-app-patch",
+}
+# Legacy script paths (rollback only, SANDPOD_BACKEND=scripts).
+SCRIPTS = {
     "provision": "customer-provisioning/scripts/provision-customer.sh",
     "remove": "customer-provisioning/scripts/remove-customer.sh",
     "add_key": "customer-provisioning/scripts/add-ssh-key.sh",
@@ -45,27 +72,43 @@ SCRIPT = {
     "rollout_php": "monitoring-backup/scripts/rollout-php-patch.sh",
     "rollout_app": "monitoring-backup/scripts/rollout-app-patch.sh",
 }
-JOBS = {}
-JOBS_LOCK = threading.Lock()
-INSTANCE_LOCKS = {}
-INSTANCE_LOCKS_GUARD = threading.Lock()
+
+
+def sandpodctl_bin():
+    env = os.environ.get("SANDPOD_SANDPODCTL")
+    if env:
+        return env
+    repo_bin = os.path.join(REPO_ROOT, "modules", "sandpodctl", "sandpodctl")
+    if os.path.isfile(repo_bin) and os.access(repo_bin, os.X_OK):
+        return repo_bin
+    return "/usr/local/bin/sandpodctl"
 
 
 def script_path(name):
     base = os.environ.get("SANDPOD_SCRIPT_DIR", os.path.join(REPO_ROOT, "modules"))
-    return os.path.join(base, SCRIPT[name])
+    return os.path.join(base, SCRIPTS[name])
+
+
+def build_cmd(name, args):
+    if os.environ.get("SANDPOD_BACKEND") == "scripts":
+        return [script_path(name)] + [str(a) for a in args]
+    return [sandpodctl_bin(), SUBCOMMANDS[name]] + [str(a) for a in args]
 
 
 def run_script(name, args, timeout=120):
-    """Run a repo script. Returns (exit, stdout, stderr)."""
-    cmd = [script_path(name)] + [str(a) for a in args]
+    """Run the operator backend. Returns (exit, stdout, stderr)."""
+    cmd = build_cmd(name, args)
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         return p.returncode, p.stdout, p.stderr
     except FileNotFoundError as e:
-        return 1, "", f"missing script: {e}"
+        return 1, "", f"missing backend: {e}"
     except subprocess.TimeoutExpired:
-        return 1, "", "script timeout"
+        return 1, "", "backend timeout"
+JOBS = {}
+JOBS_LOCK = threading.Lock()
+INSTANCE_LOCKS = {}
+INSTANCE_LOCKS_GUARD = threading.Lock()
 
 
 def exit_to_http(exit_code):

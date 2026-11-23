@@ -24,22 +24,26 @@ def _write(path, body, mode=0o755):
 
 
 def setup_module(_):
-    for d in ("customer-apps/scripts", "monitoring-backup/scripts",
-              "customer-provisioning/scripts"):
-        os.makedirs(os.path.join(FIX, "mods", d), exist_ok=True)
     M = os.path.join(FIX, "mods")
-    _write(os.path.join(M, "customer-apps/scripts/list-sites.sh"),
-           '#!/usr/bin/env bash\necho \'{"defaults":{},"php_sites":[],"port_apps":[]}\'\n')
-    _write(os.path.join(M, "monitoring-backup/scripts/resource-report.sh"),
-           '#!/usr/bin/env bash\necho \'[{"instance":"001"}]\'\n')
-    _write(os.path.join(M, "customer-provisioning/scripts/add-ssh-key.sh"),
-           '#!/usr/bin/env bash\necho "key installed for $1"\n')
+    os.makedirs(M, exist_ok=True)
+    _write(os.path.join(M, "sandpodctl"), '''#!/usr/bin/env bash
+# Fixture fake for the Go sandpodctl binary: $1 = subcommand.
+cmd="$1"; shift
+case "$cmd" in
+  list-sites) echo '{"defaults":{},"php_sites":[],"port_apps":[]}' ;;
+  resource-report) echo '[{"instance":"001"}]' ;;
+  add-ssh-key) echo "key installed for $1" ;;
+  *) echo "unknown command: $cmd" >&2; exit 2 ;;
+esac
+''')
     with open(os.path.join(FIX, "customers.tsv"), "w") as fh:
         fh.write("001\tsvc-c001\tcustomer-001\t18001\t22201\timg:pilot\n")
     with open(TOKEN, "w") as fh:
         fh.write("secret-test-token\n")
     os.chmod(TOKEN, 0o600)
-    os.environ["SANDPOD_SCRIPT_DIR"] = os.path.join(FIX, "mods")
+    os.environ["SANDPOD_SANDPODCTL"] = os.path.join(M, "sandpodctl")
+    os.environ.pop("SANDPOD_BACKEND", None)
+    os.environ.pop("SANDPOD_SCRIPT_DIR", None)
     os.environ["SANDPOD_REGISTRY"] = os.path.join(FIX, "customers.tsv")
     os.environ["SANDPOD_TOKEN_FILE"] = TOKEN
     os.environ.pop("SANDPOD_REQUIRE_AUTH", None)

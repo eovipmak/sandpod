@@ -1,7 +1,7 @@
 # panel-api — FastAPI wrap cho control panel (mechanism only, cùng host)
 
 Daemon chạy **as root**, listen `127.0.0.1:8741`. Mọi endpoint chỉ gọi
-scripts hiện có (`sh.py` là nơi duy nhất biết đường dẫn script),
+backend operator (`sh.py` là nơi duy nhất biết đường dẫn binary),
 không re-implement policy. `server.py` stdlib giữ lại làm fallback
 không-dependency; production dùng `app.py` (FastAPI).
 
@@ -41,6 +41,7 @@ không-dependency; production dùng `app.py` (FastAPI).
 # Daemon đọc scripts từ checkout tại /opt/sandpod/repo (khớp
 # WorkingDirectory trong unit file) — thiếu là fail 200/CHDIR lúc start.
 git clone <repo-url> /opt/sandpod/repo  # hoặc symlink tới checkout có sẵn
+make -C /opt/sandpod/repo/modules/sandpodctl build  # backend binary daemon gọi
 python3 -m venv /opt/sandpod/panel-api-venv
 /opt/sandpod/panel-api-venv/bin/pip install -r /opt/sandpod/repo/modules/panel-api/requirements.txt
 openssl rand -hex 32 > /etc/sandpod/panel-api.token && chmod 0600 /etc/sandpod/panel-api.token
@@ -86,7 +87,7 @@ curl $B/health
 curl $B/customers
 curl "$B/customers/001/sites?dry_run=true" -H 'Content-Type: application/json' \
   -d '{"domain":"demo.test","php":"8.3"}'
-# -> {"dryRun":true,"cmd":[".../add-site.sh","svc-c001","customer-001","demo.test","--php","8.3"]}
+# -> {"dryRun":true,"cmd":[".../sandpodctl","add-site","svc-c001","customer-001","demo.test","--php","8.3"]}
 curl -X POST $B/customers/001/backups          # -> 202 {jobId}
 curl $B/jobs/<jobId>                           # poll
 ```
@@ -97,7 +98,11 @@ Token: `curl -H "Authorization: Bearer $(cat /etc/sandpod/panel-api.token)" ...`
 ## Verify repo-only
 
 ```sh
-/tmp/sapi-venv/bin/python -m pytest modules/panel-api/tests/ -q  # 32 passed: api/contract/p2-hardening/p4-ops/p3-jobs
+/tmp/sapi-venv/bin/python -m pytest modules/panel-api/tests/ -q  # 33 passed: api/contract/p2-hardening/p4-ops/p3-jobs
 for sh in $(find modules -name "*.sh"); do bash -n "$sh"; done
+make -C modules/sandpodctl build  # backend binary cho daemon (SANDPOD_SANDPODCTL)
 /tmp/sapi-venv/bin/python -m py_compile modules/panel-api/*.py
 ```
+
+Backend: daemon gọi `sandpodctl <subcommand>` (cùng argv như `.sh` cũ).
+Rollback khẩn: `SANDPOD_BACKEND=scripts` để gọi lại `modules/*/scripts/*.sh`.

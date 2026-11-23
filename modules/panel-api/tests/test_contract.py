@@ -22,6 +22,18 @@ def test_server_maps_only_existing_scripts():
         assert os.path.isfile(os.path.join(mods, m)), f"script missing: {m}"
 
 
+def test_backend_subcommands_exist_in_sandpodctl():
+    """Every sh.py SUBCOMMANDS value must be a real sandpodctl subcommand."""
+    import re as _re
+    sh_src = open(os.path.join(API, "sh.py")).read()
+    main_src = open(os.path.join(REPO, "modules", "sandpodctl",
+                                 "cmd", "sandpodctl", "main.go")).read()
+    subs = _re.findall(r'"([\w-]+)":\s*"([\w-]+)"', sh_src.split("SUBCOMMANDS")[1].split("}")[0])
+    assert subs, "SUBCOMMANDS map empty"
+    for _logical, sub in subs:
+        assert f'"{sub}"' in main_src, f"subcommand missing in Go dispatcher: {sub}"
+
+
 def test_openapi_covers_remove_customer():
     src = open(os.path.join(API, "openapi.yaml")).read()
     assert "/customers/{id}" in src, "missing DELETE /customers/{id} (remove-customer.sh)"

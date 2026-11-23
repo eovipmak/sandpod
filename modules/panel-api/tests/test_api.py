@@ -20,40 +20,37 @@ def _write(path, body):
 
 
 def setup_module(_):
-    for d in ("customer-apps/scripts", "monitoring-backup/scripts",
-              "customer-provisioning/scripts", "shared-runtimes/scripts",
-              "host-mariadb/scripts", "host-nginx/scripts"):
-        os.makedirs(os.path.join(FIX, "mods", d), exist_ok=True)
     M = os.path.join(FIX, "mods")
-    _write(os.path.join(M, "customer-apps/scripts/list-sites.sh"),
-           '#!/usr/bin/env bash\necho \'{"defaults":{},"php_sites":[],"port_apps":[]}\'\n')
-    _write(os.path.join(M, "customer-apps/scripts/add-site.sh"),
-           '#!/usr/bin/env bash\necho "Site $3 php $5"\n'
-           'if [ "$4" = "8.2" ]; then echo "WARNING: PHP 8.2 security support ends Dec 2026" >&2; fi\n')
-    _write(os.path.join(M, "customer-apps/scripts/set-php-version.sh"),
-           '#!/usr/bin/env bash\necho "Site $3 -> $4"\n'
-           'if [ "$4" = "8.2" ]; then echo "WARNING: PHP 8.2 security support ends Dec 2026" >&2; fi\n')
-    _write(os.path.join(M, "customer-apps/scripts/remove-site.sh"),
-           '#!/usr/bin/env bash\necho "removed $3 $4"\n')
-    _write(os.path.join(M, "customer-apps/scripts/add-port-app.sh"),
-           '#!/usr/bin/env bash\necho "port app $3 $5 $7"\n')
-    _write(os.path.join(M, "customer-apps/scripts/remove-port-app.sh"),
-           '#!/usr/bin/env bash\necho "removed port $3 $4"\n')
-    _write(os.path.join(M, "shared-runtimes/scripts/reload-customer-php.sh"),
-           '#!/usr/bin/env bash\necho "reload php $3"\n'
-           'if [ "$3" = "8.2" ]; then echo "WARNING: PHP 8.2 EOL soon" >&2; fi\n'
-           'if [ "$3" = "9.9" ]; then echo "bad minor" >&2; exit 2; fi\n')
-    _write(os.path.join(M, "shared-runtimes/scripts/reload-customer-app.sh"),
-           '#!/usr/bin/env bash\necho "restart $3"\n')
-    _write(os.path.join(M, "monitoring-backup/scripts/resource-report.sh"),
-           '#!/usr/bin/env bash\necho \'[{"instance":"001"}]\'\n')
-    _write(os.path.join(M, "monitoring-backup/scripts/backup-customer.sh"),
-           '#!/usr/bin/env bash\necho /tmp/x.tar.gz\n')
-    _write(os.path.join(M, "monitoring-backup/scripts/rollout-php-patch.sh"),
-           '#!/usr/bin/env bash\necho ok\n')
+    os.makedirs(M, exist_ok=True)
+    _write(os.path.join(M, "sandpodctl"), '''#!/usr/bin/env bash
+# Fixture fake for the Go sandpodctl binary: $1 = subcommand, then same
+# argv as the legacy *.sh scripts.
+cmd="$1"; shift
+case "$cmd" in
+  list-sites) echo '{"defaults":{},"php_sites":[],"port_apps":[]}' ;;
+  add-site) echo "Site $3 php $5"
+    if [ "$4" = "8.2" ]; then echo "WARNING: PHP 8.2 security support ends Dec 2026" >&2; fi ;;
+  set-php-version) echo "Site $3 -> $4"
+    if [ "$4" = "8.2" ]; then echo "WARNING: PHP 8.2 security support ends Dec 2026" >&2; fi ;;
+  remove-site) echo "removed $3 $4" ;;
+  add-port-app) echo "port app $3 $5 $7" ;;
+  remove-port-app) echo "removed port $3 $4" ;;
+  reload-customer-php) echo "reload php $3"
+    if [ "$3" = "8.2" ]; then echo "WARNING: PHP 8.2 EOL soon" >&2; fi
+    if [ "$3" = "9.9" ]; then echo "bad minor" >&2; exit 2; fi ;;
+  reload-customer-app) echo "restart $3" ;;
+  resource-report) echo '[{"instance":"001"}]' ;;
+  backup-customer) echo /tmp/x.tar.gz ;;
+  rollout-php-patch) echo ok ;;
+  rollout-app-patch) echo ok ;;
+  *) echo "unknown command: $cmd" >&2; exit 2 ;;
+esac
+''')
     with open(os.path.join(FIX, "customers.tsv"), "w") as fh:
         fh.write("001\tsvc-c001\tcustomer-001\t18001\t22201\timg:pilot\n")
-    os.environ["SANDPOD_SCRIPT_DIR"] = os.path.join(FIX, "mods")
+    os.environ["SANDPOD_SANDPODCTL"] = os.path.join(M, "sandpodctl")
+    os.environ.pop("SANDPOD_BACKEND", None)
+    os.environ.pop("SANDPOD_SCRIPT_DIR", None)
     os.environ["SANDPOD_REGISTRY"] = os.path.join(FIX, "customers.tsv")
     # Hermetic auth: point at a fixture path that never exists, so the result
     # never depends on the host's real /etc/sandpod/panel-api.token (or lack).
@@ -88,7 +85,7 @@ def test_mutation_and_dry_run():
     assert r.status_code == 200 and r.json()["ok"] is True
     r = c.post("/v1/customers/001/sites?dry_run=true",
                json={"domain": "x.example.com", "php": "8.4"})
-    assert r.json()["dryRun"] is True and "add-site.sh" in " ".join(r.json()["cmd"])
+    assert r.json()["dryRun"] is True and "add-site" in " ".join(r.json()["cmd"])
     # P2: port/target validation is 400 (plan), not pydantic 422
     assert c.post("/v1/customers/001/port-apps",
                   json={"domain": "a.test", "port": 80, "command": "x"}).status_code == 400
@@ -137,7 +134,7 @@ def test_p2_delete_with_query_flags_and_dry_run():
     assert r.json()["dryRun"] is True
     assert "--delete-data" in r.json()["cmd"]
     r = c.delete("/v1/customers/001/port-apps/shop.example.com?dry_run=true")
-    assert "remove-port-app.sh" in " ".join(r.json()["cmd"])
+    assert "remove-port-app" in " ".join(r.json()["cmd"])
     # invalid domain -> 400 before exec (mirrors lib.sh valid_domain)
     assert c.post("/v1/customers/001/sites",
                   json={"domain": "bad..", "php": "8.3"}).status_code == 400

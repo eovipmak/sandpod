@@ -18,36 +18,31 @@ def _write(path, body):
 
 def setup_module(_):
     M = os.path.join(FIX, "mods")
-    for d in ("customer-provisioning/scripts", "monitoring-backup/scripts",
-              "customer-apps/scripts", "shared-runtimes/scripts",
-              "host-mariadb/scripts", "host-nginx/scripts"):
-        os.makedirs(os.path.join(M, d), exist_ok=True)
-    P = os.path.join(M, "customer-provisioning/scripts")
-    _write(os.path.join(P, "provision-customer.sh"),
-           '#!/usr/bin/env bash\nsleep 1.2\necho "Provisioned $1"\n')
-    _write(os.path.join(P, "remove-customer.sh"),
-           '#!/usr/bin/env bash\necho "removed $1 $*"\n')
-    _write(os.path.join(P, "add-ssh-key.sh"),
-           '#!/usr/bin/env bash\necho "key $3"\n')
-    _write(os.path.join(M, "customer-apps/scripts/list-sites.sh"),
-           '#!/usr/bin/env bash\necho \'{"defaults":{},"php_sites":[],"port_apps":[]}\'\n')
-    B = os.path.join(M, "monitoring-backup/scripts")
-    _write(os.path.join(B, "backup-customer.sh"),
-           '#!/usr/bin/env bash\necho "/backups/$1-20261123.tar.gz"\n')
-    _write(os.path.join(B, "rollout-php-patch.sh"),
-           '#!/usr/bin/env bash\nsleep 2\necho "rollout $*"\n')
-    _write(os.path.join(M, "host-mariadb/scripts/create-site-db.sh"),
-           '#!/usr/bin/env bash\necho "DB_HOST=h\nDB_NAME=$1\nDB_USER=$2\nDB_PASS=s3cr3t-$1"\n')
-    N = os.path.join(M, "host-nginx/scripts")
-    _write(os.path.join(N, "generate-site-conf.sh"),
-           f'#!/usr/bin/env bash\necho gen >> {FIX}/order.log\necho gen-ok\n')
-    _write(os.path.join(N, "reload-host-nginx.sh"),
-           f'#!/usr/bin/env bash\necho reload >> {FIX}/order.log\necho reload-ok\n')
+    os.makedirs(M, exist_ok=True)
+    _write(os.path.join(M, "sandpodctl"), f'''#!/usr/bin/env bash
+# Fixture fake for the Go sandpodctl binary: $1 = subcommand.
+cmd="$1"; shift
+case "$cmd" in
+  provision-customer) sleep 1.2; echo "Provisioned $1" ;;
+  remove-customer) echo "removed $1 $*" ;;
+  add-ssh-key) echo "key $3" ;;
+  list-sites) echo '{{"defaults":{{}},"php_sites":[],"port_apps":[]}}' ;;
+  backup-customer) echo "/backups/$1-20261123.tar.gz" ;;
+  rollout-php-patch) sleep 2; echo "rollout $*" ;;
+  rollout-app-patch) sleep 2; echo "rollout $*" ;;
+  create-site-db) echo "DB_HOST=h\\nDB_NAME=$1\\nDB_USER=$2\\nDB_PASS=s3cr3t-$1" ;;
+  generate-site-conf) echo gen >> {FIX}/order.log; echo gen-ok ;;
+  reload-host-nginx) echo reload >> {FIX}/order.log; echo reload-ok ;;
+  *) echo "unknown command: $cmd" >&2; exit 2 ;;
+esac
+''')
     if os.path.exists(os.path.join(FIX, "order.log")):
         os.remove(os.path.join(FIX, "order.log"))
     with open(os.path.join(FIX, "customers.tsv"), "w") as fh:
         fh.write("001\tsvc-c001\tcustomer-001\t18001\t22201\timg:pilot\n")
-    os.environ["SANDPOD_SCRIPT_DIR"] = M
+    os.environ["SANDPOD_SANDPODCTL"] = os.path.join(M, "sandpodctl")
+    os.environ.pop("SANDPOD_BACKEND", None)
+    os.environ.pop("SANDPOD_SCRIPT_DIR", None)
     os.environ["SANDPOD_REGISTRY"] = os.path.join(FIX, "customers.tsv")
     # Hermetic auth: never depend on the host's real token file (see test_api).
     os.environ["SANDPOD_TOKEN_FILE"] = os.path.join(FIX, "panel-api.token.absent")
