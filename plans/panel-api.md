@@ -62,14 +62,14 @@
 * [x] `host-nginx/reload` chain gen→reload đúng thứ tự; `fleet` lock chống 2 rollout song song; test `test_p3_jobs.py` 5 tests pass.
   `scope: in-scope — reverse-proxy HTTP thuần + rollout batch (scope.md §2); TLS/ACME/DNS ngoài scope, không đụng.`
 
-### P4 — Hardening + docs (không rate-limit IP: out-of-scope theo scope.md §3, edge team sở hữu; loopback 1 client nên vô tác dụng)
-* [ ] systemd hardening (`ProtectSystem=strict`, `PrivateTmp=yes`, `NoNewPrivileges`), enforce token file `0600` fail-closed lúc boot.
+### P4 — Hardening + docs (không rate-limit IP: out-of-scope theo scope.md §3, edge team sở hữu; loopback 1 client nên vô tác dụng) — done `2026-11-23`
+* [x] systemd hardening (`ProtectSystem=strict`, `PrivateTmp=yes`, `NoNewPrivileges`), enforce token file `0600` fail-closed lúc boot — done `2026-11-23` (`ExecStartPre` check `stat -c %a = 600` + `SANDPOD_REQUIRE_AUTH=1` fail-closed trong `app.py`; dev/fixture không set env vẫn fail-open cho test repo-only).
   `scope: in-scope — hardening daemon mechanism trên host (ngoài phạm vi isolation dữ liệu KH).`
-* [ ] Self-protection đúng phạm vi thay rate-limit: cap job đồng thời toàn cục, body-size limit, timeout (đã có 1800s/7200s).
+* [x] Self-protection đúng phạm vi thay rate-limit: cap job đồng thời toàn cục (`jobs._MAX_CONCURRENT=10` → `409`), body-size limit (`1 MiB` → `413`), timeout (đã có 1800s/7200s) — done `2026-11-23`.
   `scope: in-scope — giới hạn tài nguyên daemon tự bảo vệ; rate-limit per-site/DDoS/WAF → edge team, ngoài scope.`
-* [ ] `README.md` vận hành: tạo token, start service, curl ví dụ, log xem ở đâu.
+* [x] `README.md` vận hành: tạo token, start service, curl ví dụ, log xem ở đâu — done `2026-11-23` (`journalctl -u`, `stat -c %a`, caps doc).
   `scope: in-scope — operator docs cho cơ chế.`
-* [ ] Cập nhật `docs/plan.md` đánh dấu done từng phase.
+* [x] Cập nhật `docs/plan.md` đánh dấu done từng phase — done `2026-11-23` (P4 checkboxes dưới này).
   `scope: in-scope — docs nội bộ repo.`
 
 ## 3. Verify (repo-only)

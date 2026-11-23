@@ -6,6 +6,8 @@ info:
     Thin wrap over modules/*/scripts/*.sh. No policy (domains, quotas,
     billing, TLS, DNS). Sync ops <5s return directly; long ops return
     202 + jobId, poll GET /v1/jobs/{id}. Script exit 0->2xx, 2->400, 1->500.
+    Async endpoints return 409 when the instance is busy or the global job
+    cap (10 queued/running) is reached; bodies over 1 MiB return 413.
 servers:
   - url: http://127.0.0.1:8741/v1
 security:
@@ -53,7 +55,7 @@ paths:
         - { name: id, in: path, required: true, schema: { type: string, pattern: '^[0-9]{3}$' } }
       responses:
         '200':
-          description: ok (Spec v2 shape: defaults/php_sites/port_apps)
+          description: 'ok (Spec v2 shape: defaults/php_sites/port_apps)'
           content:
             application/json:
               schema: { $ref: '#/components/schemas/SiteList' }
@@ -167,7 +169,8 @@ paths:
               properties:
                 publicKey: { type: string, description: 'ssh-ed25519 ... / ssh-rsa ...' }
       responses:
-        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/Ok' } } } }
+        '202': { description: queued (async job, wraps add-ssh-key.sh), content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
+        '409': { description: 'instance busy or global job cap reached (fix-forward, re-run after)' }
   /customers/{id}/backups:
     post:
       summary: Backup customer (async, wraps backup-customer.sh)
@@ -175,6 +178,7 @@ paths:
         - { name: id, in: path, required: true, schema: { type: string } }
       responses:
         '202': { description: queued, content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
+        '409': { description: 'instance busy or global job cap reached (fix-forward, re-run after)' }
   /dbs:
     post:
       summary: Create site DB (async, wraps create-site-db.sh; creds returned once, never stored)
@@ -190,11 +194,13 @@ paths:
                 dbUser: { type: string, pattern: '^[A-Za-z0-9_]+$' }
       responses:
         '202': { description: queued, content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
+        '409': { description: 'instance busy or global job cap reached (fix-forward, re-run after)' }
   /host-nginx/reload:
     post:
       summary: Regen + reload host nginx in ONE job (chain generate-site-conf.sh then reload-host-nginx.sh; 409 if busy)
       responses:
         '202': { description: queued, content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
+        '409': { description: 'instance busy or global job cap reached (fix-forward, re-run after)' }
   /rollouts/php:
     post:
       summary: Fleet PHP patch rollout (async, wraps rollout-php-patch.sh)
@@ -204,6 +210,7 @@ paths:
             schema: { $ref: '#/components/schemas/RolloutRequest' }
       responses:
         '202': { description: queued, content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
+        '409': { description: 'instance busy or global job cap reached (fix-forward, re-run after)' }
   /rollouts/app:
     post:
       summary: Fleet Node/Python rollout (async, wraps rollout-app-patch.sh)
@@ -213,6 +220,7 @@ paths:
             schema: { $ref: '#/components/schemas/RolloutRequest' }
       responses:
         '202': { description: queued, content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
+        '409': { description: 'instance busy or global job cap reached (fix-forward, re-run after)' }
   /jobs:
     get:
       summary: List job summaries (no stdout — creds only via get(jobId))

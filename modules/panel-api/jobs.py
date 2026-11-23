@@ -23,6 +23,21 @@ _JOBS: dict = {}
 _LOCK = threading.Lock()
 _INSTANCE_BUSY: dict = {}  # instance -> jobId (queued/running)
 _MAX_JOBS = 200
+# Self-protection (scope: daemon-local, not per-site rate-limit/DDoS —
+# that belongs to the edge team): bound concurrent queued/running jobs so
+# one panel loop cannot fork unbounded threads/processes on the host.
+_MAX_CONCURRENT = 10
+
+
+def active_count() -> int:
+    with _LOCK:
+        return sum(1 for j in _JOBS.values()
+                   if j.get("status") in ("queued", "running"))
+
+
+def can_queue() -> bool:
+    """True if a new async job may be queued without exceeding the cap."""
+    return active_count() < _MAX_CONCURRENT
 
 
 def _prune():

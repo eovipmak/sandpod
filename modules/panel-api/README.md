@@ -41,9 +41,36 @@ không-dependency; production dùng `app.py` (FastAPI).
 python3 -m venv /opt/sandpod/panel-api-venv
 /opt/sandpod/panel-api-venv/bin/pip install -r modules/panel-api/requirements.txt
 openssl rand -hex 32 > /etc/sandpod/panel-api.token && chmod 0600 /etc/sandpod/panel-api.token
+stat -c %a /etc/sandpod/panel-api.token  # phải in ra 600, service fail-closed nếu khác
 cp modules/panel-api/sandpod-panel-api.service /etc/systemd/system/
 systemctl daemon-reload && systemctl start sandpod-panel-api.service
 ```
+
+Service chạy as root, listen loopback-only `127.0.0.1:8741`, hardening
+`ProtectSystem=strict + PrivateTmp=yes + NoNewPrivileges=yes`, `ExecStartPre`
+từ chối boot khi token thiếu/không `0600` (`SANDPOD_REQUIRE_AUTH=1`).
+
+## Self-protection (đúng phạm vi, thay rate-limit IP)
+
+Per-site rate-limit/DDoS/WAF thuộc edge team (ngoài scope `docs/scope.md` §3,
+loopback 1 client nên vô tác dụng) — daemon chỉ tự giới hạn tài nguyên nó giữ:
+
+* Job đồng thời toàn cục: tối đa `10` queued/running (`jobs._MAX_CONCURRENT`),
+  vượt → `409`. Lock theo instance vẫn giữ (`409` khi trùng).
+* Body-size limit: `1 MiB` (`SANDPOD_MAX_BODY_BYTES`), vượt → `413`.
+* Timeout: sync script `120s`, job thường `1800s`, rollout `7200s`.
+
+## Logs / debug
+
+```sh
+journalctl -u sandpod-panel-api.service -f  # audit JSON: rid/method/path/code/latency
+systemctl status sandpod-panel-api.service
+curl -H "Authorization: Bearer $(cat /etc/sandpod/panel-api.token)" http://127.0.0.1:8741/v1/health
+```
+
+Journal KHÔNG bao giờ chứa stdout/stderr job (creds DB chỉ lấy 1 lần qua
+`GET /v1/jobs/{id}`, panel cất vault ngay). Job history in-memory, prune 200,
+restart daemon là mất.
 
 ## Debug không cần root-data (?dry_run=1)
 

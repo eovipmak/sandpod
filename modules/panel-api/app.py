@@ -32,6 +32,19 @@ log = logging.getLogger("sandpod.panel-api")
 VERSION = "4.0.0"
 TOKEN_FILE = os.environ.get("SANDPOD_TOKEN_FILE", "/etc/sandpod/panel-api.token")
 REGISTRY = os.environ.get("SANDPOD_REGISTRY", "/etc/sandpod/customers.tsv")
+# Self-protection: bound request bodies daemon-locally (loopback-only, one
+# client). Per-site rate-limit/DDoS/WAF belongs to the edge team (out of
+# scope per scope.md §3), so we only cap what the daemon itself parses.
+MAX_BODY_BYTES = int(os.environ.get("SANDPOD_MAX_BODY_BYTES", "1048576"))
+
+
+def token_file_mode_ok(path: str = TOKEN_FILE) -> bool:
+    """Token file must be mode 0600 when present (creds protection)."""
+    try:
+        return (os.stat(path).st_mode & 0o777) == 0o600
+    except OSError:
+        return False
+
 
 app = FastAPI(title="SandPod Panel API", version=VERSION,
               docs_url="/docs", openapi_url="/openapi.json")
@@ -44,6 +57,16 @@ def load_token() -> str:
             return fh.read().strip()
     except OSError:
         return ""  # dev/fixture without token; production must provision one
+
+
+if os.environ.get("SANDPOD_REQUIRE_AUTH") == "1":
+    # Fail-closed at boot: systemd also enforces this via ExecStartPre so a
+    # mis-provisioned host never serves unauthenticated. Dev/fixture (env
+    # unset) keeps the old fail-open behaviour for repo-only tests.
+    if not load_token() or not token_file_mode_ok():
+        raise RuntimeError(
+            f"token file {TOKEN_FILE} missing or not mode 0600 "
+            "(SANDPOD_REQUIRE_AUTH=1, fail-closed)")
 
 
 def require_auth(cred: HTTPAuthorizationCredentials | None = Depends(auth_scheme)):
@@ -63,6 +86,17 @@ def audit(request_id: str, method: str, path: str, code: int, detail: str = ""):
 async def request_id_mw(request: Request, call_next):
     rid = request.headers.get("X-Request-ID") or uuid.uuid4().hex[:12]
     t0 = time.time()
+    # Body-size cap (daemon self-protection; loopback-only so this is not a
+    # WAF/rate-limit substitute — see scope.md §3).
+    try:
+        cl = request.headers.get("content-length")
+        if cl is not None and int(cl) > MAX_BODY_BYTES:
+            return JSONResponse(status_code=413,
+                                content={"error": "request body too large",
+                                         "exitCode": 2, "stderr": "",
+                                         "requestId": rid})
+    except ValueError:
+        pass
     try:
         resp = await call_next(request)
     except Exception:
@@ -74,6 +108,15 @@ async def request_id_mw(request: Request, call_next):
     audit(rid, request.method, request.url.path, resp.status_code,
           f"{(time.time() - t0) * 1000:.0f}ms")
     return resp
+
+
+def ensure_capacity():
+    """409 when too many async jobs are queued/running (fix-forward)."""
+    if not jobs.can_queue():
+        raise HTTPException(status_code=409, detail={
+            "error": f"too many jobs running (cap {jobs._MAX_CONCURRENT}), "
+                     "retry after polling GET /v1/jobs",
+            "exitCode": 1, "stderr": ""})
 
 
 # ---------- models (mirror openapi.yaml) ----------
@@ -339,6 +382,7 @@ def provision(req: ProvisionRequest, request: Request, dry_run: bool = False):
             args += [flag, str(val)]
     if dry_run:
         return {"dryRun": True, "cmd": build_cmd("provision", args)}
+    ensure_capacity()
     if not jobs.try_acquire(req.instance):
         raise HTTPException(status_code=409, detail={
             "error": f"instance {req.instance} busy (job running)",
@@ -368,6 +412,7 @@ def remove_customer(iid: str, dry_run: bool = False,
         args.append("--delete-registry-entry")
     if dry_run:
         return {"dryRun": True, "cmd": build_cmd("remove", args)}
+    ensure_capacity()
     if not jobs.try_acquire(iid):
         raise HTTPException(status_code=409, detail={
             "error": f"instance {iid} busy (job running)",
@@ -519,6 +564,7 @@ def add_ssh_key(iid: str, req: SshKeyRequest, dry_run: bool = False):
     if dry_run:
         return {"dryRun": True,
                 "cmd": build_cmd("add_key", ["<user>", "<container>", "<pubkey-file>"])}
+    ensure_capacity()
     if not jobs.try_acquire(f"ssh-{iid}"):
         raise HTTPException(status_code=409, detail={
             "error": f"instance {iid} busy (job running)",
@@ -539,6 +585,7 @@ def backup(iid: str, dry_run: bool = False):
     lookup(iid)
     if dry_run:
         return {"dryRun": True, "cmd": build_cmd("backup", [iid])}
+    ensure_capacity()
     if not jobs.try_acquire(f"backup-{iid}"):
         raise HTTPException(status_code=409, detail={
             "error": f"backup for {iid} already running",
@@ -553,6 +600,7 @@ def backup(iid: str, dry_run: bool = False):
 def create_db(req: DbRequest, dry_run: bool = False):
     if dry_run:
         return {"dryRun": True, "cmd": build_cmd("mkdb", [req.dbName, req.dbUser])}
+    ensure_capacity()
     # Creds are in job stdout EXACTLY once; in-memory only, never logged.
     # Panel must store them in its vault on first poll, then treat as secret.
     return Job(jobId=jobs.submit("mkdb", "mkdb", [req.dbName, req.dbUser]),
@@ -566,6 +614,7 @@ def reload_nginx(dry_run: bool = False):
     if dry_run:
         return {"dryRun": True,
                 "cmds": [build_cmd(n, a) for n, a in steps]}
+    ensure_capacity()
     if not jobs.try_acquire("host-nginx"):
         raise HTTPException(status_code=409, detail={
             "error": "host-nginx reload already running",
@@ -589,6 +638,7 @@ def _rollout(kind: str, req: RolloutRequest, dry_run: bool):
     name = "rollout_php" if kind == "php" else "rollout_app"
     if dry_run:
         return {"dryRun": True, "cmd": build_cmd(name, args)}
+    ensure_capacity()
     if not jobs.try_acquire("fleet"):
         raise HTTPException(status_code=409, detail={
             "error": "fleet rollout already running (fix forward, re-run after)",
