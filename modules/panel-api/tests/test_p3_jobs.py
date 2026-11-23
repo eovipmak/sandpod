@@ -49,7 +49,8 @@ def setup_module(_):
         fh.write("001\tsvc-c001\tcustomer-001\t18001\t22201\timg:pilot\n")
     os.environ["SANDPOD_SCRIPT_DIR"] = M
     os.environ["SANDPOD_REGISTRY"] = os.path.join(FIX, "customers.tsv")
-    os.environ.pop("SANDPOD_TOKEN_FILE", None)
+    # Hermetic auth: never depend on the host's real token file (see test_api).
+    os.environ["SANDPOD_TOKEN_FILE"] = os.path.join(FIX, "panel-api.token.absent")
 
 
 def _client():

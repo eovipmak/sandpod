@@ -55,7 +55,9 @@ def setup_module(_):
         fh.write("001\tsvc-c001\tcustomer-001\t18001\t22201\timg:pilot\n")
     os.environ["SANDPOD_SCRIPT_DIR"] = os.path.join(FIX, "mods")
     os.environ["SANDPOD_REGISTRY"] = os.path.join(FIX, "customers.tsv")
-    os.environ.pop("SANDPOD_TOKEN_FILE", None)
+    # Hermetic auth: point at a fixture path that never exists, so the result
+    # never depends on the host's real /etc/sandpod/panel-api.token (or lack).
+    os.environ["SANDPOD_TOKEN_FILE"] = os.path.join(FIX, "panel-api.token.absent")
 
 
 def _client():

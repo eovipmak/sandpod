@@ -38,10 +38,15 @@ REGISTRY = os.environ.get("SANDPOD_REGISTRY", "/etc/sandpod/customers.tsv")
 MAX_BODY_BYTES = int(os.environ.get("SANDPOD_MAX_BODY_BYTES", "1048576"))
 
 
-def token_file_mode_ok(path: str = TOKEN_FILE) -> bool:
+def _token_path() -> str:
+    """Resolved at call time so tests can point it at a fixture via env."""
+    return os.environ.get("SANDPOD_TOKEN_FILE", "/etc/sandpod/panel-api.token")
+
+
+def token_file_mode_ok(path: str | None = None) -> bool:
     """Token file must be mode 0600 when present (creds protection)."""
     try:
-        return (os.stat(path).st_mode & 0o777) == 0o600
+        return (os.stat(path or _token_path()).st_mode & 0o777) == 0o600
     except OSError:
         return False
 
@@ -53,7 +58,7 @@ auth_scheme = HTTPBearer(auto_error=False)
 
 def load_token() -> str:
     try:
-        with open(TOKEN_FILE) as fh:
+        with open(_token_path()) as fh:
             return fh.read().strip()
     except OSError:
         return ""  # dev/fixture without token; production must provision one
