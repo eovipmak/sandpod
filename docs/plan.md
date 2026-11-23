@@ -29,7 +29,7 @@
   - [x] `flock` registry (`<registry>.lock` cho provision + remove `--delete-registry-entry`, re-validate ports dưới lock)
   - [x] allocator port: fix ssh grep `\t<port>$` → `\t<port>\t`, dùng `$REGISTRY`, `--registry` + `SANDPOD_USED_PORTS` cho fixture test
   - [x] quota inode: `set-customer-quota.sh --hard-inodes/--soft-inodes` (`ihard/isoft`), provision passthrough
-  - [x] `resource-report` đọc `xfs_quota` (cột DISK join theo project name, `--xfs-report-file` cho fixture)
+  - [x] `resource-report` đọc `xfs_quota` (cột DISK used/soft/hard + cột INODES, join exact-match theo project name hoặc numeric id, `--json` cho panel, `--xfs-report-file/--xfs-inode-report-file` cho fixture, exit 1/2 đúng quy ước)
 
 ## Pha 3: Panel contract
 

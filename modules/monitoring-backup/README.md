@@ -12,10 +12,14 @@
 * `scripts/backup-customer.sh` - `tar` of `~/data` + `~/config` to
   `/var/backups/sandpod/<id>-<ts>.tar.gz`, keeps 7. Pair with
   `host-mariadb/scripts/backup-site-db.sh` for a full site backup.
-* `scripts/resource-report.sh` - `podman stats` per registry customer plus a
-  `DISK` column joined from `xfs_quota report -p -b -h` by project name
-  (`quota-off` while accounting is off). `--xfs-report-file <file>` replays a
-  saved report (repo-test hook).
+* `scripts/resource-report.sh` - `podman stats` per registry customer plus
+  `DISK` (`report -p -b -h`: used/soft/hard) and `INODES` (`report -p -i -h`)
+  columns joined by exact project name (== service user), fallback by numeric
+  project id (== account UID). `quota-off`/`-` while accounting is off.
+  `--json` prints a panel-parseable array (same convention as
+  `customer-apps/scripts/list-sites.sh --json`). `--xfs-report-file` /
+  `--xfs-inode-report-file` replay saved reports (repo-test hooks, offline use).
+  Exit 1 when the registry is missing, 2 on bad arguments.
 
 ## Log policy
 
