@@ -1,0 +1,301 @@
+openapi: 3.0.3
+info:
+  title: SandPod Panel API (mechanism only)
+  version: 4.0.0
+  description: |
+    Thin wrap over modules/*/scripts/*.sh. No policy (domains, quotas,
+    billing, TLS, DNS). Sync ops <5s return directly; long ops return
+    202 + jobId, poll GET /v1/jobs/{id}. Script exit 0->2xx, 2->400, 1->500.
+servers:
+  - url: http://127.0.0.1:8741/v1
+security:
+  - bearerAuth: []
+paths:
+  /health:
+    get:
+      summary: Daemon liveness (no script call)
+      security: []
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Health' }
+  /customers:
+    get:
+      summary: List customers (from customers.tsv registry)
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Customer' }
+    post:
+      summary: Provision customer (async, wraps provision-customer.sh)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProvisionRequest' }
+      responses:
+        '202':
+          description: queued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+        '400': { $ref: '#/components/responses/BadArgs' }
+  /customers/{id}/sites:
+    get:
+      summary: List sites (wraps list-sites.sh --json)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, pattern: '^[0-9]{3}$' } }
+      responses:
+        '200':
+          description: ok (Spec v2 shape: defaults/php_sites/port_apps)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SiteList' }
+    post:
+      summary: Add PHP site (wraps add-site.sh)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddSiteRequest' }
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '400': { $ref: '#/components/responses/BadArgs' }
+        '500': { $ref: '#/components/responses/RuntimeFail' }
+  /customers/{id}/sites/{domain}:
+    patch:
+      summary: Set PHP version (wraps set-php-version.sh)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: domain, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [php]
+              properties:
+                php: { type: string, enum: ['8.2', '8.3', '8.4', '8.5', '8.6'] }
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/Ok' } } } }
+        '400': { $ref: '#/components/responses/BadArgs' }
+    delete:
+      summary: Remove site (wraps remove-site.sh; ?delete_data=true appends --delete-data)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: domain, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                deleteData: { type: boolean, default: false }
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/Ok' } } } }
+  /customers/{id}/port-apps:
+    post:
+      summary: Add port app (wraps add-port-app.sh; panel allocates port 3000-3999)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddPortAppRequest' }
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/Ok' } } } }
+        '400': { $ref: '#/components/responses/BadArgs' }
+  /customers/{id}/port-apps/{domain}:
+    delete:
+      summary: Remove port app (wraps remove-port-app.sh; ?delete_data=true appends --delete-data)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: domain, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/Ok' } } } }
+  /customers/{id}/reload:
+    post:
+      summary: Reload FPM minor or port app (wraps reload-customer-php/app.sh)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target]
+              properties:
+                target:
+                  type: string
+                  description: 'php-8.3 | app-<domain>'
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/Ok' } } } }
+  /customers/{id}/resources:
+    get:
+      summary: Resource report (wraps resource-report.sh --json)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { type: object } } } }
+  /customers/{id}/ssh-keys:
+    post:
+      summary: Add SSH key (wraps add-ssh-key.sh; panel owns who gets access)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [publicKey]
+              properties:
+                publicKey: { type: string, description: 'ssh-ed25519 ... / ssh-rsa ...' }
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/Ok' } } } }
+  /customers/{id}/backups:
+    post:
+      summary: Backup customer (async, wraps backup-customer.sh)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '202': { description: queued, content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
+  /dbs:
+    post:
+      summary: Create site DB (async, wraps create-site-db.sh; creds returned once, never stored)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [dbName, dbUser]
+              properties:
+                dbName: { type: string, pattern: '^[A-Za-z0-9_]+$' }
+                dbUser: { type: string, pattern: '^[A-Za-z0-9_]+$' }
+      responses:
+        '202': { description: queued, content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
+  /host-nginx/reload:
+    post:
+      summary: Regen + reload host nginx in ONE job (chain generate-site-conf.sh then reload-host-nginx.sh; 409 if busy)
+      responses:
+        '202': { description: queued, content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
+  /rollouts/php:
+    post:
+      summary: Fleet PHP patch rollout (async, wraps rollout-php-patch.sh)
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RolloutRequest' }
+      responses:
+        '202': { description: queued, content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
+  /rollouts/app:
+    post:
+      summary: Fleet Node/Python rollout (async, wraps rollout-app-patch.sh)
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RolloutRequest' }
+      responses:
+        '202': { description: queued, content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
+  /jobs:
+    get:
+      summary: List job summaries (no stdout — creds only via get(jobId))
+      responses:
+        '200': { description: ok }
+  /jobs/{jobId}:
+    get:
+      summary: Poll async job
+      parameters:
+        - { name: jobId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
+        '404': { description: unknown job }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT-or-opaque-token }
+  responses:
+    BadArgs: { description: 'script exit 2 (bad input)' }
+    RuntimeFail: { description: 'script exit 1 (runtime failure, .bak rollback attempted)' }
+  schemas:
+    Health: { type: object, properties: { ok: { type: boolean }, version: { type: string } } }
+    Customer:
+      type: object
+      properties:
+        instance: { type: string }
+        serviceUser: { type: string }
+        container: { type: string }
+        webPort: { type: integer }
+        sshPort: { type: integer }
+        image: { type: string }
+    ProvisionRequest:
+      type: object
+      required: [instance]
+      properties:
+        instance: { type: string, pattern: '^[0-9]{3}$' }
+        serviceUser: { type: string }
+        webPort: { type: integer }
+        sshPort: { type: integer }
+        image: { type: string }
+        quotaGb: { type: integer, default: 10 }
+        cpus: { type: string, default: '1.0' }
+        memory: { type: string, default: '1g' }
+        ioWeight: { type: integer, default: 100 }
+    AddSiteRequest:
+      type: object
+      required: [domain]
+      properties:
+        domain: { type: string }
+        php: { type: string, enum: ['8.2', '8.3', '8.4', '8.5', '8.6'], default: '8.3' }
+        primary: { type: boolean, default: false }
+    AddPortAppRequest:
+      type: object
+      required: [domain, port, command]
+      properties:
+        domain: { type: string }
+        port: { type: integer, minimum: 3000, maximum: 3999 }
+        command: { type: string }
+        primary: { type: boolean, default: false }
+    SiteList:
+      type: object
+      properties:
+        defaults: { type: object }
+        php_sites: { type: array, items: { type: object } }
+        port_apps: { type: array, items: { type: object } }
+    RolloutRequest:
+      type: object
+      properties:
+        batchSize: { type: integer, default: 5 }
+        sleepSeconds: { type: integer, default: 10 }
+        skipUpdate: { type: boolean, default: false }
+    Job:
+      type: object
+      properties:
+        jobId: { type: string }
+        status: { type: string, enum: [queued, running, done, failed] }
+        exitCode: { type: integer, nullable: true }
+        stdout: { type: string }
+        stderr: { type: string }
+    Ok:
+      type: object
+      properties:
+        ok: { type: boolean }
+        stdout: { type: string }
+        stderr: { type: string }
+        warnings: { type: array, items: { type: string } }
+        requestId: { type: string }

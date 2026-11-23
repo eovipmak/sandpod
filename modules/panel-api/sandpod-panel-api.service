@@ -1,0 +1,22 @@
+[Unit]
+Description=SandPod panel-api (FastAPI, mechanism only, loopback)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/sandpod/repo/modules/panel-api
+ExecStart=/opt/sandpod/panel-api-venv/bin/uvicorn app:app --host 127.0.0.1 --port 8741 --workers 1
+Environment=SANDPOD_TOKEN_FILE=/etc/sandpod/panel-api.token
+Environment=SANDPOD_REGISTRY=/etc/sandpod/customers.tsv
+# Venv provision (host, once):
+#   python3 -m venv /opt/sandpod/panel-api-venv
+#   /opt/sandpod/panel-api-venv/bin/pip install -r /opt/sandpod/repo/modules/panel-api/requirements.txt
+ProtectSystem=strict
+ReadWritePaths=/etc/sandpod /tmp
+PrivateTmp=yes
+NoNewPrivileges=yes
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

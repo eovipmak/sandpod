@@ -1,0 +1,629 @@
+"""SandPod panel-api (FastAPI). Mechanism only — wraps modules/*/scripts/*.sh.
+
+Run as root on host, loopback-only. Panel (same host) calls 127.0.0.1:8741.
+Auth: Bearer token file (0600). /v1/health is public for systemd/readiness.
+
+Debug helpers:
+  ?dry_run=1   -> validate + return cmd[] that WOULD run, no exec (works for
+                  every mutating endpoint; panel devs don't need root data).
+  X-Request-ID -> echoed back + in JSON error; logged with method/path/exit.
+"""
+import json
+import logging
+import os
+import re
+import time
+import uuid
+from typing import Literal
+
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import BaseModel, Field, field_validator
+
+try:  # package import (uvicorn panel-api.app:app)
+    from . import jobs
+    from .sh import build_cmd, exit_to_http, run_script
+except ImportError:  # top-level import (pytest with sys.path)
+    import jobs  # type: ignore[no-redef]
+    from sh import build_cmd, exit_to_http, run_script  # type: ignore
+
+log = logging.getLogger("sandpod.panel-api")
+VERSION = "4.0.0"
+TOKEN_FILE = os.environ.get("SANDPOD_TOKEN_FILE", "/etc/sandpod/panel-api.token")
+REGISTRY = os.environ.get("SANDPOD_REGISTRY", "/etc/sandpod/customers.tsv")
+
+app = FastAPI(title="SandPod Panel API", version=VERSION,
+              docs_url="/docs", openapi_url="/openapi.json")
+auth_scheme = HTTPBearer(auto_error=False)
+
+
+def load_token() -> str:
+    try:
+        with open(TOKEN_FILE) as fh:
+            return fh.read().strip()
+    except OSError:
+        return ""  # dev/fixture without token; production must provision one
+
+
+def require_auth(cred: HTTPAuthorizationCredentials | None = Depends(auth_scheme)):
+    want = load_token()
+    if not want:
+        return
+    if not cred or cred.scheme.lower() != "bearer" or cred.credentials != want:
+        raise HTTPException(status_code=401, detail="unauthorized")
+
+
+def audit(request_id: str, method: str, path: str, code: int, detail: str = ""):
+    log.info(json.dumps({"rid": request_id, "m": method, "p": path,
+                         "code": code, "detail": detail[:200]}))
+
+
+@app.middleware("http")
+async def request_id_mw(request: Request, call_next):
+    rid = request.headers.get("X-Request-ID") or uuid.uuid4().hex[:12]
+    t0 = time.time()
+    try:
+        resp = await call_next(request)
+    except Exception:
+        log.exception(json.dumps({"rid": rid, "p": request.url.path, "err": "unhandled"}))
+        return JSONResponse(status_code=500,
+                            content={"error": "internal", "exitCode": 1,
+                                     "stderr": "", "requestId": rid})
+    resp.headers["X-Request-ID"] = rid
+    audit(rid, request.method, request.url.path, resp.status_code,
+          f"{(time.time() - t0) * 1000:.0f}ms")
+    return resp
+
+
+# ---------- models (mirror openapi.yaml) ----------
+
+class ProvisionRequest(BaseModel):
+    instance: str = Field(pattern=r"^[0-9]{3}$")
+    serviceUser: str | None = None
+    webPort: int | None = None
+    sshPort: int | None = None
+    image: str | None = None
+    quotaGb: int | None = None
+    cpus: str | None = None
+    memory: str | None = None
+    ioWeight: int | None = None
+
+
+class AddSiteRequest(BaseModel):
+    domain: str
+    php: Literal["8.2", "8.3", "8.4", "8.5", "8.6"] = "8.3"
+    primary: bool = False
+
+
+class SetPhpRequest(BaseModel):
+    php: Literal["8.2", "8.3", "8.4", "8.5", "8.6"]
+
+
+class DeleteOpts(BaseModel):
+    deleteData: bool = False
+
+
+class RemoveCustomerOpts(BaseModel):
+    deleteData: bool = False
+    deleteUser: bool = False
+    deleteRegistryEntry: bool = False
+
+
+class AddPortAppRequest(BaseModel):
+    domain: str
+    port: int  # validated in handler -> 400 (plan: valid_port lỗi → 400)
+    command: str
+    primary: bool = False
+
+
+class ReloadRequest(BaseModel):
+    target: str  # php-8.3 | app-<domain>
+
+    @field_validator("target")
+    @classmethod
+    def check_target(cls, v: str):
+        if v.startswith("php-") or v.startswith("app-"):
+            return v
+        raise ValueError("target must be php-8.x or app-<domain>")
+
+
+class SshKeyRequest(BaseModel):
+    publicKey: str
+
+    @field_validator("publicKey")
+    @classmethod
+    def check_key(cls, v: str):
+        if v.startswith("ssh-") and len(v) < 4096 and "\n" not in v:
+            return v
+        raise ValueError("bad publicKey")
+
+
+class DbRequest(BaseModel):
+    dbName: str = Field(pattern=r"^[A-Za-z0-9_]+$")
+    dbUser: str = Field(pattern=r"^[A-Za-z0-9_]+$")
+
+
+class RolloutRequest(BaseModel):
+    batchSize: int = 5
+    sleepSeconds: int = 10
+    skipUpdate: bool = False
+
+
+class Job(BaseModel):
+    jobId: str
+    status: str
+    exitCode: int | None = None
+    stdout: str = ""
+    stderr: str = ""
+
+
+class Ok(BaseModel):
+    ok: bool
+    stdout: str = ""
+    stderr: str = ""
+    warnings: list[str] = []
+    requestId: str = ""
+
+
+# ---------- P2 helpers: validation + warnings, single source ----------
+
+DOMAIN_RE = re.compile(
+    r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$")
+PHP_MINORS = ("8.2", "8.3", "8.4", "8.5", "8.6")
+
+
+def check_domain(raw: str) -> str:
+    """Mirror lib.sh valid_domain. Script stays authoritative; this gives
+    fast 400 without exec. Returns lowercased domain."""
+    d = (raw or "").lower()
+    if not DOMAIN_RE.match(d):
+        raise HTTPException(status_code=400, detail={
+            "error": f"invalid domain: {raw}", "exitCode": 2, "stderr": ""})
+    return d
+
+
+def check_port(port: int) -> int:
+    if not isinstance(port, int) or not (3000 <= port <= 3999):
+        raise HTTPException(status_code=400, detail={
+            "error": f"invalid port {port} (want 3000-3999)",
+            "exitCode": 2, "stderr": ""})
+    return port
+
+
+def check_command(cmd: str) -> str:
+    if not (cmd or "").strip():
+        raise HTTPException(status_code=400, detail={
+            "error": "missing --command", "exitCode": 2, "stderr": ""})
+    if "\n" in cmd:
+        raise HTTPException(status_code=400, detail={
+            "error": "command must be a single line", "exitCode": 2, "stderr": ""})
+    return cmd
+
+
+def warnings_from(stderr: str) -> list[str]:
+    """EOL/policy warns passthrough as structured field, never an error."""
+    out = []
+    for line in (stderr or "").splitlines():
+        if "WARNING" in line:
+            out.append(line.strip()[:500])
+    return out
+
+
+def ok_result(stdout: str, stderr: str, request: Request) -> Ok:
+    return Ok(ok=True, stdout=stdout, stderr=stderr,
+             warnings=warnings_from(stderr),
+             requestId=request.headers.get("X-Request-ID", ""))
+
+
+def raise_script_error(op: str, code: int, stdout: str, stderr: str):
+    raise HTTPException(status_code=exit_to_http(code), detail={
+        "error": f"{op} failed", "exitCode": code,
+        "stdout": stdout, "stderr": stderr,
+        "warnings": warnings_from(stderr)})
+
+
+# ---------- helpers ----------
+
+def get_customers() -> list[dict]:
+    out = []
+    try:
+        with open(os.environ.get("SANDPOD_REGISTRY", REGISTRY)) as fh:
+            for line in fh:
+                line = line.rstrip("\n")
+                if not line or line.lstrip().startswith("#"):
+                    continue
+                parts = line.split("\t")
+                if len(parts) < 6:
+                    continue
+                inst, user, cont, web, ssh, img = parts[:6]
+                out.append({"instance": inst, "serviceUser": user,
+                            "container": cont,
+                            "webPort": int(web) if web.isdigit() else web,
+                            "sshPort": int(ssh) if ssh.isdigit() else ssh,
+                            "image": img})
+    except OSError:
+        pass
+    return out
+
+
+def lookup(instance: str) -> dict:
+    for c in get_customers():
+        if c["instance"] == instance:
+            return c
+    raise HTTPException(status_code=404, detail="unknown instance")
+
+
+def dry(cmd: list, request: Request):
+    """?dry_run=1: return cmd without exec. Returns dict or None."""
+    from fastapi import Request as _R  # noqa (type hint only)
+    return {"dryRun": True, "cmd": cmd,
+            "requestId": request.headers.get("X-Request-ID", "")}
+
+
+def script_or_500(name: str, args: list, request: Request, dry_run: bool):
+    """Legacy helper: dry-run short-circuit, else None (caller runs once)."""
+    if dry_run:
+        return dry(build_cmd(name, args), request)
+    return None
+
+
+def validate_provision(req: ProvisionRequest) -> str | None:
+    """Mirror provision-customer.sh validation for fail-fast 400 (no queue)."""
+    if req.cpus is not None:
+        if not re.match(r"^[0-9]+(\.[0-9]+)?$", str(req.cpus)):
+            return f"invalid --cpus {req.cpus} (e.g. 0.5, 1.0, 2)"
+        try:
+            pct = int(float(str(req.cpus)) * 100)
+        except ValueError:
+            return f"invalid --cpus {req.cpus}"
+        if not (10 <= pct <= 1600):
+            return f"invalid --cpus {req.cpus} (want 0.1-16)"
+    if req.memory is not None:
+        if not re.match(r"^[0-9]+[kKmMgG]?$", str(req.memory)):
+            return f"invalid --memory {req.memory} (e.g. 512m, 1g, 2g)"
+        if int(re.sub(r"[^0-9]", "", str(req.memory)) or 0) <= 0:
+            return f"invalid --memory {req.memory}"
+    if req.ioWeight is not None:
+        try:
+            w = int(req.ioWeight)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return f"invalid --io-weight {req.ioWeight} (want 10-1000)"
+        if not (10 <= w <= 1000):
+            return f"invalid --io-weight {req.ioWeight} (want 10-1000)"
+    if req.quotaGb is not None:
+        try:
+            q = int(req.quotaGb)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return f"invalid --quota-gb {req.quotaGb}"
+        if q <= 0:
+            return f"invalid --quota-gb {req.quotaGb} (want >0)"
+    for p, name in ((req.webPort, "web-port"), (req.sshPort, "ssh-port")):
+        if p is not None:
+            try:
+                pi = int(p)  # type: ignore[arg-type]
+            except (TypeError, ValueError):
+                return f"invalid --{name} {p} (want numeric)"
+            if not (1 <= pi <= 65535):
+                return f"invalid --{name} {p} (want 1-65535)"
+    if (req.webPort is not None and req.sshPort is not None
+            and int(req.webPort) == int(req.sshPort)):
+        return "web and ssh ports must differ"
+    return None
+
+
+# ---------- routes ----------
+
+@app.get("/v1/health")
+def health():
+    return {"ok": True, "version": VERSION}
+
+
+@app.get("/v1/customers", dependencies=[Depends(require_auth)])
+def list_customers():
+    return get_customers()
+
+
+@app.post("/v1/customers", status_code=202, dependencies=[Depends(require_auth)])
+def provision(req: ProvisionRequest, request: Request, dry_run: bool = False):
+    err = validate_provision(req)
+    if err:
+        raise HTTPException(status_code=400, detail={
+            "error": err, "exitCode": 2, "stderr": ""})
+    args = [req.instance]
+    for val, flag in ((req.serviceUser, "--service-user"), (req.webPort, "--web-port"),
+                      (req.sshPort, "--ssh-port"), (req.image, "--image"),
+                      (req.quotaGb, "--quota-gb"), (req.cpus, "--cpus"),
+                      (req.memory, "--memory"), (req.ioWeight, "--io-weight")):
+        if val not in (None, ""):
+            args += [flag, str(val)]
+    if dry_run:
+        return {"dryRun": True, "cmd": build_cmd("provision", args)}
+    if not jobs.try_acquire(req.instance):
+        raise HTTPException(status_code=409, detail={
+            "error": f"instance {req.instance} busy (job running)",
+            "exitCode": 1, "stderr": ""})
+    return Job(jobId=jobs.submit("provision", "provision", args,
+                                 instance=req.instance),
+               status="queued")
+
+
+@app.delete("/v1/customers/{iid}", status_code=202, dependencies=[Depends(require_auth)])
+def remove_customer(iid: str, dry_run: bool = False,
+                    delete_data: bool = False, delete_user: bool = False,
+                    delete_registry_entry: bool = False):
+    """Query flags (DELETE-with-body is unreliable across clients)."""
+    if not iid.isdigit() or len(iid) != 3:
+        raise HTTPException(status_code=400, detail="instance must be 3 digits")
+    if delete_user and not delete_data:
+        raise HTTPException(status_code=400, detail={
+            "error": "--delete-user requires --delete-data (refused)",
+            "exitCode": 2, "stderr": ""})
+    args = [iid]
+    if delete_data:
+        args.append("--delete-data")
+    if delete_user:
+        args.append("--delete-user")
+    if delete_registry_entry:
+        args.append("--delete-registry-entry")
+    if dry_run:
+        return {"dryRun": True, "cmd": build_cmd("remove", args)}
+    if not jobs.try_acquire(iid):
+        raise HTTPException(status_code=409, detail={
+            "error": f"instance {iid} busy (job running)",
+            "exitCode": 1, "stderr": ""})
+    return Job(jobId=jobs.submit("remove", "remove", args, instance=iid),
+               status="queued")
+
+
+@app.get("/v1/customers/{iid}/sites", dependencies=[Depends(require_auth)])
+def list_sites(iid: str):
+    c = lookup(iid)
+    code, so, se = run_script("list_sites", [c["serviceUser"], c["container"], "--json"])
+    if code != 0:
+        raise HTTPException(status_code=exit_to_http(code),
+                            detail={"error": "list-sites failed", "exitCode": code, "stderr": se})
+    try:
+        return json.loads(so or "{}")
+    except ValueError:
+        raise HTTPException(status_code=500, detail="bad script JSON")
+
+
+@app.post("/v1/customers/{iid}/sites", dependencies=[Depends(require_auth)])
+def add_site(iid: str, req: AddSiteRequest, request: Request, dry_run: bool = False):
+    c = lookup(iid)
+    domain = check_domain(req.domain)
+    args = [c["serviceUser"], c["container"], domain, "--php", req.php]
+    if req.primary:
+        args.append("--primary")
+    r = script_or_500("add_site", args, request, dry_run)
+    if r:
+        return r
+    code, so, se = run_script("add_site", args)
+    if code != 0:
+        raise_script_error("add-site", code, so, se)
+    return ok_result(so, se, request)
+
+
+@app.patch("/v1/customers/{iid}/sites/{domain}", dependencies=[Depends(require_auth)])
+def set_php(iid: str, domain: str, req: SetPhpRequest, request: Request,
+            dry_run: bool = False):
+    c = lookup(iid)
+    d = check_domain(domain)
+    args = [c["serviceUser"], c["container"], d, req.php]
+    r = script_or_500("set_php", args, request, dry_run)
+    if r:
+        return r
+    code, so, se = run_script("set_php", args)
+    if code != 0:
+        raise_script_error("set-php", code, so, se)
+    return ok_result(so, se, request)
+
+
+@app.delete("/v1/customers/{iid}/sites/{domain}", dependencies=[Depends(require_auth)])
+def delete_site(iid: str, domain: str, request: Request, dry_run: bool = False,
+                delete_data: bool = False):
+    """?delete_data=true appends --delete-data (query, not body)."""
+    c = lookup(iid)
+    d = check_domain(domain)
+    args = [c["serviceUser"], c["container"], d]
+    if delete_data:
+        args.append("--delete-data")
+    r = script_or_500("remove_site", args, request, dry_run)
+    if r:
+        return r
+    code, so, se = run_script("remove_site", args)
+    if code != 0:
+        raise_script_error("remove-site", code, so, se)
+    return ok_result(so, se, request)
+
+
+@app.post("/v1/customers/{iid}/port-apps", dependencies=[Depends(require_auth)])
+def add_port_app(iid: str, req: AddPortAppRequest, request: Request,
+                 dry_run: bool = False):
+    c = lookup(iid)
+    d = check_domain(req.domain)
+    p = check_port(req.port)
+    cmd = check_command(req.command)
+    args = [c["serviceUser"], c["container"], d,
+            "--port", str(p), "--command", cmd]
+    if req.primary:
+        args.append("--primary")
+    r = script_or_500("add_port", args, request, dry_run)
+    if r:
+        return r
+    code, so, se = run_script("add_port", args)
+    if code != 0:
+        raise_script_error("add-port-app", code, so, se)
+    return ok_result(so, se, request)
+
+
+@app.delete("/v1/customers/{iid}/port-apps/{domain}",
+            dependencies=[Depends(require_auth)])
+def delete_port_app(iid: str, domain: str, request: Request, dry_run: bool = False,
+                    delete_data: bool = False):
+    c = lookup(iid)
+    d = check_domain(domain)
+    args = [c["serviceUser"], c["container"], d]
+    if delete_data:
+        args.append("--delete-data")
+    r = script_or_500("remove_port", args, request, dry_run)
+    if r:
+        return r
+    code, so, se = run_script("remove_port", args)
+    if code != 0:
+        raise_script_error("remove-port-app", code, so, se)
+    return ok_result(so, se, request)
+
+
+@app.post("/v1/customers/{iid}/reload", dependencies=[Depends(require_auth)])
+def reload(iid: str, req: ReloadRequest, request: Request, dry_run: bool = False):
+    c = lookup(iid)
+    if req.target.startswith("php-"):
+        minor = req.target[4:]
+        if minor not in PHP_MINORS:
+            raise HTTPException(status_code=400, detail={
+                "error": f"unsupported php minor {minor}", "exitCode": 2, "stderr": ""})
+        name, args = "reload_php", [c["serviceUser"], c["container"], minor]
+    else:
+        d = check_domain(req.target[4:])
+        name, args = "reload_app", [c["serviceUser"], c["container"], d]
+    r = script_or_500(name, args, request, dry_run)
+    if r:
+        return r
+    code, so, se = run_script(name, args)
+    if code != 0:
+        raise_script_error("reload", code, so, se)
+    return ok_result(so, se, request)
+
+
+@app.get("/v1/customers/{iid}/resources", dependencies=[Depends(require_auth)])
+def resources(iid: str):
+    lookup(iid)
+    code, so, se = run_script("report", ["--registry",
+                             os.environ.get("SANDPOD_REGISTRY", REGISTRY), "--json"])
+    if code != 0:
+        raise HTTPException(status_code=exit_to_http(code), detail=se)
+    try:
+        arr = json.loads(so or "[]")
+    except ValueError:
+        raise HTTPException(status_code=500, detail="bad report JSON")
+    return next((r for r in arr if r.get("instance") == iid), {})
+
+
+@app.post("/v1/customers/{iid}/ssh-keys", status_code=202,
+          dependencies=[Depends(require_auth)])
+def add_ssh_key(iid: str, req: SshKeyRequest, dry_run: bool = False):
+    import tempfile
+    lookup(iid)
+    if dry_run:
+        return {"dryRun": True,
+                "cmd": build_cmd("add_key", ["<user>", "<container>", "<pubkey-file>"])}
+    if not jobs.try_acquire(f"ssh-{iid}"):
+        raise HTTPException(status_code=409, detail={
+            "error": f"instance {iid} busy (job running)",
+            "exitCode": 1, "stderr": ""})
+    c = lookup(iid)
+    with tempfile.NamedTemporaryFile("w", suffix=".pub", delete=False) as fh:
+        fh.write(req.publicKey + "\n")
+        kf = fh.name
+    return Job(jobId=jobs.submit("ssh-key", "add_key",
+                                 [c["serviceUser"], c["container"], kf],
+                                 instance=f"ssh-{iid}"),
+               status="queued")
+
+
+@app.post("/v1/customers/{iid}/backups", status_code=202,
+          dependencies=[Depends(require_auth)])
+def backup(iid: str, dry_run: bool = False):
+    lookup(iid)
+    if dry_run:
+        return {"dryRun": True, "cmd": build_cmd("backup", [iid])}
+    if not jobs.try_acquire(f"backup-{iid}"):
+        raise HTTPException(status_code=409, detail={
+            "error": f"backup for {iid} already running",
+            "exitCode": 1, "stderr": ""})
+    # backup-customer.sh prints the tar path on stdout (last line).
+    return Job(jobId=jobs.submit("backup", "backup", [iid],
+                                 instance=f"backup-{iid}"),
+               status="queued")
+
+
+@app.post("/v1/dbs", status_code=202, dependencies=[Depends(require_auth)])
+def create_db(req: DbRequest, dry_run: bool = False):
+    if dry_run:
+        return {"dryRun": True, "cmd": build_cmd("mkdb", [req.dbName, req.dbUser])}
+    # Creds are in job stdout EXACTLY once; in-memory only, never logged.
+    # Panel must store them in its vault on first poll, then treat as secret.
+    return Job(jobId=jobs.submit("mkdb", "mkdb", [req.dbName, req.dbUser]),
+               status="queued")
+
+
+@app.post("/v1/host-nginx/reload", status_code=202,
+          dependencies=[Depends(require_auth)])
+def reload_nginx(dry_run: bool = False):
+    steps = [("gen_nginx", []), ("reload_nginx", [])]
+    if dry_run:
+        return {"dryRun": True,
+                "cmds": [build_cmd(n, a) for n, a in steps]}
+    if not jobs.try_acquire("host-nginx"):
+        raise HTTPException(status_code=409, detail={
+            "error": "host-nginx reload already running",
+            "exitCode": 1, "stderr": ""})
+    return Job(jobId=jobs.submit_chain("host-nginx", steps,
+                                       instance="host-nginx"),
+               status="queued")
+
+
+def _rollout(kind: str, req: RolloutRequest, dry_run: bool):
+    if req.batchSize is not None and int(req.batchSize) < 1:
+        raise HTTPException(status_code=400, detail={
+            "error": "batchSize must be >= 1", "exitCode": 2, "stderr": ""})
+    if req.sleepSeconds is not None and int(req.sleepSeconds) < 0:
+        raise HTTPException(status_code=400, detail={
+            "error": "sleepSeconds must be >= 0", "exitCode": 2, "stderr": ""})
+    args = ["--batch-size", str(req.batchSize),
+            "--sleep-seconds", str(req.sleepSeconds)]
+    if req.skipUpdate:
+        args.append("--skip-update")
+    name = "rollout_php" if kind == "php" else "rollout_app"
+    if dry_run:
+        return {"dryRun": True, "cmd": build_cmd(name, args)}
+    if not jobs.try_acquire("fleet"):
+        raise HTTPException(status_code=409, detail={
+            "error": "fleet rollout already running (fix forward, re-run after)",
+            "exitCode": 1, "stderr": ""})
+    return Job(jobId=jobs.submit("rollout", name, args, instance="fleet",
+                                 timeout=7200),
+               status="queued")
+
+
+@app.post("/v1/rollouts/php", status_code=202, dependencies=[Depends(require_auth)])
+def rollout_php(req: RolloutRequest, dry_run: bool = False):
+    return _rollout("php", req, dry_run)
+
+
+@app.post("/v1/rollouts/app", status_code=202, dependencies=[Depends(require_auth)])
+def rollout_app(req: RolloutRequest, dry_run: bool = False):
+    return _rollout("app", req, dry_run)
+
+
+@app.get("/v1/jobs", dependencies=[Depends(require_auth)])
+def list_jobs():
+    """Summaries only (no stdout — DB creds stay in get(jobId) until pruned)."""
+    return jobs.list_jobs()
+
+
+@app.get("/v1/jobs/{jid}", dependencies=[Depends(require_auth)])
+def get_job(jid: str):
+    j = jobs.get(jid)
+    if not j:
+        raise HTTPException(status_code=404, detail="unknown job")
+    return j
+
+
+@app.get("/openapi-sync-check")
+def sync_check():
+    """Dev hook: paths FastAPI serve vs openapi.yaml contract (debug only)."""
+    served = sorted({r.path for r in app.routes if getattr(r, "path", "").startswith("/v1")})
+    return {"served": served, "version": VERSION}

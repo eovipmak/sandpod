@@ -128,3 +128,24 @@ Shared Node.js / Python runtimes. Everything in Spec v2 stays unchanged.
   updates host Node/Python trees then restarts every port app per
   customer in batches with health-checks (mirrors `rollout-php-patch.sh`
   but for port apps: no `USR2`, a restart picks up the new binaries).
+
+## Spec v4 (draft 2026-11-23, Pha panel-api)
+
+Machine-readable contract: `modules/panel-api/openapi.yaml`. Quy tắc bất biến:
+
+- Base `http://127.0.0.1:8741/v1`, JSON. Daemon chạy as root trên host,
+  listen loopback-only. Auth `Bearer` (token file `0600` do panel cấp);
+  TLS/mTLS cho panel remote thuộc tầng edge/panel, ngoài scope repo.
+- Exit → HTTP: script `0` → `2xx`, `2` (bad args) → `400`, `1` (runtime) →
+  `500` kèm `{error, exitCode, stderr}`. Warn EOL (PHP 8.2) passthrough
+  stderr, không đổi thành lỗi.
+- Sync (<5s): `GET customers/sites/resources/health`, mọi site/port-app
+  ops. Async (`202 + {jobId}`, poll `GET /v1/jobs/{id}`): provision,
+  remove, backup, DB create, host-nginx reload, rollout php/app.
+- Không re-implement logic: mọi `POST/PATCH/DELETE` chỉ gọi đúng script
+  trong bảng `plans/panel-api.md` §1 với cùng validation
+  (`valid_domain/minor/port`, port-app `3000-3999` do panel cấp).
+  `list-sites --json` và `resource-report --json` là shape trả về,
+  panel không parse text.
+- Registry `customers.tsv`/`sites.tsv` vẫn là source-of-truth phía host;
+  `create-site-db.sh` trả creds một lần, API không lưu disk.
