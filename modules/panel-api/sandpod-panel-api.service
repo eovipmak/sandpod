@@ -9,7 +9,9 @@ WorkingDirectory=/opt/sandpod/repo/modules/panel-api
 # Fail-closed: refuse to start without a 0600 token file (P4). Panel owns
 # token rotation; repo only reads it. Dev/fixture runs with
 # SANDPOD_REQUIRE_AUTH unset keep the old fail-open behaviour.
-ExecStartPre=/bin/sh -c 'test -f /etc/sandpod/panel-api.token || (echo "missing token file /etc/sandpod/panel-api.token" >&2; exit 1); [ "$(stat -c %a /etc/sandpod/panel-api.token)" = "600" ] || (echo "token file must be mode 0600" >&2; exit 1)'
+# NOTE: %%a (double percent) — systemd expands %a to the CPU arch, so a
+# single %a would run `stat -c x86-64` and always fail this gate.
+ExecStartPre=/bin/sh -c 'test -f /etc/sandpod/panel-api.token || (echo "missing token file /etc/sandpod/panel-api.token" >&2; exit 1); [ "$(stat -c %%a /etc/sandpod/panel-api.token)" = "600" ] || (echo "token file must be mode 0600" >&2; exit 1)'
 ExecStart=/opt/sandpod/panel-api-venv/bin/uvicorn app:app --host 127.0.0.1 --port 8741 --workers 1 --limit-max-requests 10000
 Environment=SANDPOD_TOKEN_FILE=/etc/sandpod/panel-api.token
 Environment=SANDPOD_REQUIRE_AUTH=1

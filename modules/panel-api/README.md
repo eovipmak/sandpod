@@ -38,11 +38,14 @@ không-dependency; production dùng `app.py` (FastAPI).
 ## Chạy (host, operator)
 
 ```sh
+# Daemon đọc scripts từ checkout tại /opt/sandpod/repo (khớp
+# WorkingDirectory trong unit file) — thiếu là fail 200/CHDIR lúc start.
+git clone <repo-url> /opt/sandpod/repo  # hoặc symlink tới checkout có sẵn
 python3 -m venv /opt/sandpod/panel-api-venv
-/opt/sandpod/panel-api-venv/bin/pip install -r modules/panel-api/requirements.txt
+/opt/sandpod/panel-api-venv/bin/pip install -r /opt/sandpod/repo/modules/panel-api/requirements.txt
 openssl rand -hex 32 > /etc/sandpod/panel-api.token && chmod 0600 /etc/sandpod/panel-api.token
 stat -c %a /etc/sandpod/panel-api.token  # phải in ra 600, service fail-closed nếu khác
-cp modules/panel-api/sandpod-panel-api.service /etc/systemd/system/
+cp /opt/sandpod/repo/modules/panel-api/sandpod-panel-api.service /etc/systemd/system/
 systemctl daemon-reload && systemctl start sandpod-panel-api.service
 ```
 
