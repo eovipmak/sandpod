@@ -13,11 +13,12 @@
 
 ## Pha 2: Runtime & Scale
 
-- [ ] **2.1 Shared Node/Python** — host quản lý, container mount RO, image gọn dần — due: `2026-12-04`
-  - [x] `install-node-runtimes.sh` + `install-python-runtimes.sh` (host, label SELinux, verify `node --version`) — done: `2026-11-20`
-  - [x] `Containerfile` tạo placeholder `/opt/sandpod/node`, `/opt/sandpod/python` + symlink compat — done: `2026-11-20` (node placeholder + mount; python interim dùng host RPM)
-  - [x] `quadlet/customer@.container` thêm 2 mount RO — done: `2026-11-20` (node mount xong; python mount toàn `/opt/sandpod` chờ prefix build)
-  - [x] `reload-customer-app.sh` (`supervisorctl restart app-<domain>`) + docs — done: `2026-11-20`
+- [x] **2.1 Shared Node/Python** — host quản lý, container mount RO, image gọn dần — done: `2026-11-23` (repo-only, image tag mới)
+  - [x] `install-node-runtimes.sh` (fnm + stable `<major>` symlink, `--no-fnm` tarball fallback) + `update-node-runtimes.sh` + `install-python-runtimes.sh` (uv + stable `<ver>` symlink, `--no-uv` standalone-tarball fallback) + `update-python-runtimes.sh` (SELinux label, verify `--version`) — done: `2026-11-23`
+  - [x] `Containerfile` placeholder `/opt/sandpod/node` + `/opt/sandpod/python`, symlink `/usr/local/bin/node*/npm*/python3*` → shared trees (dangling khi thiếu mount → fallback RPM `/usr/bin` qua PATH) — done: `2026-11-23`
+  - [x] `quadlet/customer@.container` mount RO `/opt/sandpod/node` + `/opt/sandpod/python` — done: `2026-11-23`
+  - [x] `reload-customer-app.sh` (`supervisorctl restart app-<domain>`, runtime-agnostic) + `rollout-app-patch.sh` (update cả 2 trees → restart mọi port app theo `list-sites --json`, batch + health-check) + docs — done: `2026-11-23`
+  - [x] Spec v3 (`docs/control-panel.md`): fnm layout, python prefix, mount mới, panel dùng absolute shared path + fallback, helper reload/rollout — done: `2026-11-23`
 - [x] **2.2 Vòng đời PHP (giữ đủ bản cho KH lựa)** — done: `2026-11-20`
   - [x] Cảnh báo EOL 8.2 trong `add-site.sh`/`set-php-version.sh` — done: `2026-11-20` (`eol_warn_for_minor` trong `lib.sh`, warn stderr không chặn panel)
   - [x] Thêm 8.6 song song (php-fpm conf + supervisord + nginx map + reload/rollout) — done: `2026-11-20` (FPM `127.0.0.1:9086`, giữ nguyên 8.2-8.5, không xóa bản nào)

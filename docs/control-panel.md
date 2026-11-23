@@ -11,13 +11,19 @@ The panel may rely on these without inspecting image internals:
 - Mounts: `~/data` → `/srv/customer` (writable), `~/config` →
   `/etc/sandpod-config` (read-only inside the container, so the panel must
   edit the host-side files), host PHP runtimes read-only at `/opt/remi`,
-  `/etc/opt/remi`, `/usr/lib64/libonig.so.105`.
+  `/etc/opt/remi`, `/usr/lib64/libonig.so.105`, host Node.js trees
+  read-only at `/opt/sandpod/node`, host Python prefixes read-only at
+  `/opt/sandpod/python` (see Spec v3).
 - PHP-FPM listeners (fixed ports, one master per minor):
   8.2 → `127.0.0.1:9082`, 8.3 → `127.0.0.1:9000`, 8.4 → `127.0.0.1:9084`,
   8.5 → `127.0.0.1:9085`, 8.6 → `127.0.0.1:9086`.
 - CLI binaries: `php82/83/84/85` (`php` = 8.3), `node`/`node-22` (22),
   `node-24`, `node-26` with matching `npm`/`npm-24`/`npm-26`,
   `python3.12`/`python3.13`/`python3.14` (`python3` = 3.12).
+  When the shared mounts are present the `/usr/local/bin` names resolve
+  to `/opt/sandpod/node/<major>/bin/...` and
+  `/opt/sandpod/python/<ver>/bin/...`; when absent (old `pilot` tag)
+  they fall back to the image RPM binaries at the same names.
 - Supervisord services: `sshd`, `crond`, `php82-fpm`, `php83-fpm`,
   `php84-fpm`, `php85-fpm`, `php86-fpm`, `nginx`.
 - Nginx variables with defaults: `$site_root` defaults to
@@ -91,3 +97,34 @@ spec bump):
 - EOL policy: scripts warn on stderr for near-EOL minors (currently PHP
   8.2, support ends Dec 2026) but still execute — the panel decides whether
   to proceed.
+
+## Spec v3 (frozen 2026-11-23, Pha 2.1)
+
+Shared Node.js / Python runtimes. Everything in Spec v2 stays unchanged.
+
+- Host layout (managed by `shared-runtimes` install/update scripts, root):
+  - Node.js: `/opt/sandpod/node/<major>/bin/node` for `<major>` in
+    `22, 24, 26`, plus `default -> 22`. Installed with `fnm`
+    (`FNM_DIR=/opt/sandpod/node/.fnm`); the `<major>` symlinks point at
+    the fnm-managed installation so container paths stay stable across
+    patch upgrades. Direct tarballs (`--no-fnm`) keep the same layout.
+  - Python: self-contained prefixes `/opt/sandpod/python/<ver>/`
+    (`<ver>` in `3.12, 3.13, 3.14`, `default -> 3.12`), each with
+    `bin/python3.<minor>`. Managed with `uv`
+    (`UV_PYTHON_INSTALL_DIR=/opt/sandpod/python/.uv`); the `<ver>`
+    symlinks point at the uv-managed install dir so container paths stay
+    stable across patch upgrades. Direct standalone tarballs (`--no-uv`)
+    keep the same layout.
+- Extra mounts (read-only, host → container, same paths):
+  `/opt/sandpod/node` and `/opt/sandpod/python`. Old `pilot` images
+  work without them (image RPM fallback); new images require them.
+- Panel port-app commands should prefer the absolute shared paths
+  (`/opt/sandpod/node/<major>/bin/node`,
+  `/opt/sandpod/python/<ver>/bin/python3.<minor>`) and fall back to
+  the bare `node/node-*/python3.*` names when the mount is absent.
+- Reload/rollout helpers: `reload-customer-app.sh <service-user>
+  <container> <domain>` restarts one port app (`supervisorctl restart`,
+  runtime-agnostic); `monitoring-backup/scripts/rollout-app-patch.sh`
+  updates host Node/Python trees then restarts every port app per
+  customer in batches with health-checks (mirrors `rollout-php-patch.sh`
+  but for port apps: no `USR2`, a restart picks up the new binaries).

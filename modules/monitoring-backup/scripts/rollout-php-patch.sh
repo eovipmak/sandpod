@@ -22,7 +22,7 @@ while [[ $# -gt 0 ]]; do case "$1" in
 esac; done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 RELOAD="${REPO_ROOT}/modules/shared-runtimes/scripts/reload-customer-php.sh"
 HEALTH="${REPO_ROOT}/modules/customer-provisioning/scripts/health-check.sh"
 

@@ -16,6 +16,7 @@ RUN dnf -y install dnf-plugins-core epel-release \
         mariadb \
         ncdu \
         net-tools \
+        libatomic \
         libxslt \
         nginx \
         nodejs \
@@ -57,6 +58,7 @@ RUN useradd --create-home --shell /bin/bash customer \
         /etc/opt/remi \
         /opt/remi \
         /opt/sandpod/node \
+        /opt/sandpod/python \
         /srv/customer/public_html \
         /usr/lib64 \
     && install -m 0644 /dev/null /usr/lib64/libonig.so.105 \
@@ -80,6 +82,21 @@ RUN supervisor_password="$(openssl rand -hex 32)" \
     && ln -s /opt/remi/php85/root/usr/bin/php /usr/local/bin/php85 \
     && ln -s /opt/remi/php86/root/usr/bin/php /usr/local/bin/php86 \
     && ln -s /usr/local/bin/php83 /usr/local/bin/php \
+    # Shared Node/Python: /usr/local/bin names resolve to the read-only
+    # host trees when mounted; when the mount is absent (old pilot tag)
+    # the dangling link is skipped by PATH lookup and the image RPM
+    # binaries in /usr/bin take over (fallback, see control-panel Spec v3).
+    && ln -s /opt/sandpod/node/default/bin/node /usr/local/bin/node \
+    && ln -s /opt/sandpod/node/22/bin/node /usr/local/bin/node-22 \
+    && ln -s /opt/sandpod/node/24/bin/node /usr/local/bin/node-24 \
+    && ln -s /opt/sandpod/node/26/bin/node /usr/local/bin/node-26 \
+    && ln -s /opt/sandpod/node/default/bin/npm /usr/local/bin/npm \
+    && ln -s /opt/sandpod/node/24/bin/npm /usr/local/bin/npm-24 \
+    && ln -s /opt/sandpod/node/26/bin/npm /usr/local/bin/npm-26 \
+    && ln -s /opt/sandpod/python/default/bin/python3 /usr/local/bin/python3 \
+    && ln -s /opt/sandpod/python/3.12/bin/python3.12 /usr/local/bin/python3.12 \
+    && ln -s /opt/sandpod/python/3.13/bin/python3.13 /usr/local/bin/python3.13 \
+    && ln -s /opt/sandpod/python/3.14/bin/python3.14 /usr/local/bin/python3.14 \
     && ln -sfn /etc/sandpod-config/nginx.conf /etc/nginx/nginx.conf \
     && nginx -t \
     && /usr/sbin/sshd -t

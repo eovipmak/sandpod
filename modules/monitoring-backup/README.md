@@ -9,6 +9,16 @@
   sudo modules/monitoring-backup/scripts/rollout-php-patch.sh --batch-size 2
   sudo modules/monitoring-backup/scripts/rollout-php-patch.sh --minor 8.3 --minor 8.4 --skip-update
   ```
+* `scripts/rollout-app-patch.sh` - fleet Node/Python patch:
+  `update-node-runtimes.sh` + `update-python-runtimes.sh` once, then per
+  customer restart every port app (`reload-customer-app.sh` per domain from
+  `list-sites.sh --json`) + `health-check.sh` in batches. Same batch/stop
+  semantics as the PHP rollout. `--skip-node-update` / `--skip-python-update`
+  / `--skip-update` re-run restarts without touching host trees.
+  ```sh
+  sudo modules/monitoring-backup/scripts/rollout-app-patch.sh --batch-size 2
+  sudo modules/monitoring-backup/scripts/rollout-app-patch.sh --skip-python-update
+  ```
 * `scripts/backup-customer.sh` - `tar` of `~/data` + `~/config` to
   `/var/backups/sandpod/<id>-<ts>.tar.gz`, keeps 7. Pair with
   `host-mariadb/scripts/backup-site-db.sh` for a full site backup.

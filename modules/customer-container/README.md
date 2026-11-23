@@ -21,17 +21,20 @@ This module builds the first rootless customer container prototype.
 | PHP | 8.4 | `php84`, FPM `127.0.0.1:9084`, host runtime mount |
 | PHP | 8.5 | `php85`, FPM `127.0.0.1:9085`, host runtime mount |
 | PHP | 8.6 | `php86`, FPM `127.0.0.1:9086`, host runtime mount |
-| Node.js | 22 | `node` / `node-22`, `npm` |
-| Node.js | 24 | `node-24`, `npm-24` |
-| Node.js | 26 | `node-26`, `npm-26` |
-| Python | 3.12 | `python3` / `python3.12` (system) |
-| Python | 3.13 | `python3.13` |
-| Python | 3.14 | `python3.14` |
+| Node.js | 22 | `node` / `node-22`, `npm` | shared `/opt/sandpod/node/22` (fnm) |
+| Node.js | 24 | `node-24`, `npm-24` | shared `/opt/sandpod/node/24` (fnm) |
+| Node.js | 26 | `node-26`, `npm-26` | shared `/opt/sandpod/node/26` (fnm) |
+| Python | 3.12 | `python3` / `python3.12` | shared `/opt/sandpod/python/3.12` |
+| Python | 3.13 | `python3.13` | shared `/opt/sandpod/python/3.13` |
+| Python | 3.14 | `python3.14` | shared `/opt/sandpod/python/3.14` |
 
 PHP executables and extensions are not in the image. They come from the host's
-read-only Remi SCL mounts, managed by the
-[shared-runtimes module](../shared-runtimes/README.md). EPEL remains enabled
-inside the image for tools such as `htop` and Python 3.13.
+read-only Remi SCL mounts; Node.js and Python come from the host's read-only
+`/opt/sandpod/node` / `/opt/sandpod/python` trees (see the
+[shared-runtimes module](../shared-runtimes/README.md), Spec v3 in
+`docs/control-panel.md`). The image keeps distro RPM fallbacks at the same
+`/usr/local/bin` names so containers started without the new mounts still
+run. EPEL remains enabled inside the image for tools such as `htop`.
 
 ## Build and run
 

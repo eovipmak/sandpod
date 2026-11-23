@@ -39,7 +39,7 @@ Host services and customer workloads have separate lifecycles:
 | Module | Responsibility | Status |
 | --- | --- | --- |
 | `customer-container` | Customer image, runtime processes, and rootless Quadlet | Prototype |
-| `shared-runtimes` | Host Remi PHP RPMs mounted read-only into customers | PHP prototype |
+| `shared-runtimes` | Host Remi PHP RPMs + fnm-managed Node trees + standalone Python prefixes, mounted read-only into customers | Prototype |
 | `host-nginx` | Host customer/site reverse-proxy configuration (plain HTTP only) | Prototype scripts |
 | `host-mariadb` | Shared DB service, per-site accounts, backup and restore | Prototype scripts |
 | `customer-provisioning` | Create accounts, storage, limits, keys, and service units | Prototype scripts |
@@ -55,12 +55,16 @@ Nginx should proxy to the customer's loopback-only web port; runtime choice
 remains inside the customer module.
 
 The PHP executables and extensions are host RPMs under Remi's parallel
-`/opt/remi/php<minor>` paths. Updating a package changes the files available to
-every container, but does not replace code already loaded by running FPM
+`/opt/remi/php<minor>` paths. Node.js (`22/24/26`, fnm-managed with stable
+`/opt/sandpod/node/<major>` symlinks) and Python (`3.12/3.13/3.14`,
+self-contained `/opt/sandpod/python/<ver>` prefixes) are host trees mounted
+read-only the same way. Updating a package/tree changes the files available to
+every container, but does not replace code already loaded by running
 processes. The rollout controller must gracefully signal the corresponding
-FPM master in each customer container. Roll out in batches and health-check
-each customer. Node.js and Python still ship in the image until equivalent
-shared runtime bundles are implemented.
+master in each customer container (FPM `USR2` per minor; port-app
+`supervisorctl restart` per domain). Roll out in batches and health-check
+each customer. Node/Python image RPMs remain only as fallback for containers
+started without the shared mounts.
 
 Runtime versions must be reviewed against upstream support windows before
 production rollout. In particular, PHP 8.2 is near the end of security support
