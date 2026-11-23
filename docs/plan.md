@@ -9,6 +9,7 @@
 3. Mọi task trong plan phải xong được ở mức repo; việc cần host/E2E không cho vào plan khi chưa được yêu cầu explicitly.
 4. Không xóa bản PHP nào — giữ đủ bản cho KH lựa (quyết định `2026-11-20`).
 5. Đụng contract panel (mount/port/program/TSV) phải bump Spec trong `docs/control-panel.md` trước khi code.
+6. Scope: repo là 1 module isolation (vai trò như CloudLinux), xem `docs/scope.md` trước khi đề xuất. TLS/DNS/mail/WAF/panel-UI thuộc tầng khác, ngoài scope; `host-nginx` chỉ reverse-proxy HTTP thuần.
 
 ## Pha 2: Runtime & Scale
 

@@ -8,6 +8,7 @@ Small infra repo (no app code, tests, CI, lint, or package manager). Source of t
 - `modules/customer-container/` — AlmaLinux 10 image + supervisord (sshd, crond, 5× php-fpm 8.2-8.6, nginx) + rootless Quadlet template + pilot site. Build/run docs in its `README.md`.
 - `modules/shared-runtimes/` — host Remi PHP RPMs mounted read-only into customers. Only PHP 8.2/8.3/8.4/8.5/8.6 is shared; Node 22/24/26 ships host-shared at `/opt/sandpod/node`, Python 3.12/3.13/3.14 still ships in the image.
 - New feature = new dir under `modules/` owning its build files, units, config, verification, and operator docs; cross-module decisions go in `docs/`.
+- Scope: `docs/scope.md` — this repo is one isolation module (CloudLinux role: isolate customers + mechanism for the panel). TLS/DNS/mail/WAF/panel-UI belong to other layers; check the scope test there before proposing features.
 
 ## Build / deploy (exact commands)
 

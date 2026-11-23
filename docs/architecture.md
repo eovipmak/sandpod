@@ -5,7 +5,7 @@
 ```text
 Internet
   |
-  +-- Host Nginx: TLS termination and reverse proxy
+  +-- Host Nginx: plain-HTTP reverse proxy (TLS terminates at the edge, outside this repo)
   |
   +-- Rootless Podman: one customer container per customer
   |     +-- SSH, cron, web gateway, and customer runtimes
@@ -40,7 +40,7 @@ Host services and customer workloads have separate lifecycles:
 | --- | --- | --- |
 | `customer-container` | Customer image, runtime processes, and rootless Quadlet | Prototype |
 | `shared-runtimes` | Host Remi PHP RPMs mounted read-only into customers | PHP prototype |
-| `host-nginx` | Host TLS and customer/site reverse-proxy configuration | Prototype scripts |
+| `host-nginx` | Host customer/site reverse-proxy configuration (plain HTTP only) | Prototype scripts |
 | `host-mariadb` | Shared DB service, per-site accounts, backup and restore | Prototype scripts |
 | `customer-provisioning` | Create accounts, storage, limits, keys, and service units | Prototype scripts |
 | `customer-apps` | Per-site mechanism (nginx maps, PHP version, data dirs) for the panel | Prototype scripts |

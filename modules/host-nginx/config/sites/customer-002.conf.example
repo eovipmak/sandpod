@@ -14,11 +14,6 @@ server {
     listen 80;
     server_name example002.test www.example002.test;
 
-    # ACME challenge for certbot (keep HTTP open even after TLS is added).
-    location ^~ /.well-known/acme-challenge/ {
-        root /var/www/html;
-    }
-
     location / {
         proxy_pass http://sandpod_customer_002;
         proxy_http_version 1.1;

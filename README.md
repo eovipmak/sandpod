@@ -12,7 +12,7 @@ modules/
   shared-runtimes/            Host-managed read-only runtimes
   customer-provisioning/      Accounts, Quadlet units, ports, keys, registry
   customer-apps/              Per-site nginx maps and PHP versions (panel mechanism)
-  host-nginx/                 Host TLS and reverse-proxy configuration
+  host-nginx/                 Host reverse-proxy configuration (plain HTTP; TLS owned by edge/panel)
   host-mariadb/               Shared DB service, per-site accounts, backups
   host-storage/               XFS project quotas per customer
   monitoring-backup/          Fleet rollout, backups, resource reports
@@ -42,7 +42,7 @@ projects (soft 8G / hard 10G, see
 MariaDB integration exists as prototype scripts
 ([`host-nginx`](modules/host-nginx/README.md),
 [`host-mariadb`](modules/host-mariadb/README.md)) with no production domains,
-TLS certificates, or site databases yet.
+TLS termination/certificates (edge-owned, out of scope), or site databases yet.
 
 See [the architecture notes](docs/architecture.md) and the
 [customer container module guide](modules/customer-container/README.md).
