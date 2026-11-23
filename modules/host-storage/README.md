@@ -37,8 +37,11 @@ and the limits are applied on the next provision/re-run after the reboot.
   Registries: `/etc/projid` (`<uid>:<user>`), `/etc/projects` (`<user>:<home>`).
 * Quotas are whole GB; soft <= hard. Exceeding soft warns, exceeding hard
   fails writes (`EDQUOT`/`ENOSPC` to the customer processes).
-* Inode limits are not set (default: millions) - add `-i` flags in
-  `set-customer-quota.sh` if customers store millions of tiny files.
+* Inode limits default to unset (filesystem default, millions). Pass
+  `--hard-inodes N --soft-inodes N` to `set-customer-quota.sh` (or
+  `provision-customer.sh --hard-inodes/--soft-inodes`) when customers store
+  millions of tiny files; applied as `ihard/isoft` in the same
+  `xfs_quota limit -p` call.
 
 ## Status
 

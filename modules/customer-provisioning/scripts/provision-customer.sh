@@ -8,6 +8,8 @@
 #     [--ssh-port 22202] [--ssh-key /path/to/id_rsa.pub]
 #     [--image localhost/sandpod/customer-runtime:pilot] [--image-tar /tmp/img.tar]
 #     [--image-source-user svc-c001] [--skip-image-transfer] [--quota-gb 10]
+#     [--hard-inodes 0] [--soft-inodes 0] [--registry /etc/sandpod/customers.tsv]
+#     [--cpus 1.0] [--memory 1g] [--io-weight 100]
 #     [--skip-start] [--force]
 #
 # instance-id: 3-digit id, e.g. 001, 002. Container becomes customer-<id>,
@@ -33,6 +35,12 @@ IMAGE_TAR=""
 IMAGE_SOURCE_USER=""
 SKIP_IMAGE_TRANSFER=0
 QUOTA_GB=10
+HARD_INODES=0
+SOFT_INODES=0
+REGISTRY="/etc/sandpod/customers.tsv"
+CPUS="1.0"
+MEMORY="1g"
+IO_WEIGHT="100"
 SKIP_START=0
 FORCE=0
 
@@ -47,6 +55,12 @@ while [[ $# -gt 0 ]]; do
         --image-source-user) IMAGE_SOURCE_USER="${2:-}"; shift 2 ;;
         --skip-image-transfer) SKIP_IMAGE_TRANSFER=1; shift ;;
         --quota-gb) QUOTA_GB="${2:-}"; shift 2 ;;
+        --hard-inodes) HARD_INODES="${2:-}"; shift 2 ;;
+        --soft-inodes) SOFT_INODES="${2:-}"; shift 2 ;;
+        --registry) REGISTRY="${2:-}"; shift 2 ;;
+        --cpus) CPUS="${2:-}"; shift 2 ;;
+        --memory) MEMORY="${2:-}"; shift 2 ;;
+        --io-weight) IO_WEIGHT="${2:-}"; shift 2 ;;
         --skip-start) SKIP_START=1; shift ;;
         --force) FORCE=1; shift ;;
         -h|--help) usage 0 ;;
@@ -68,13 +82,17 @@ TEMPLATE_SRC="${REPO_ROOT}/modules/customer-container/quadlet/customer@.containe
 NGINX_SRC="${REPO_ROOT}/modules/customer-container/config/nginx.conf"
 INDEX_SRC="${REPO_ROOT}/modules/customer-container/config/default-index.html"
 PILOT_PHP="${REPO_ROOT}/modules/customer-container/examples/pilot-site/index.php"
-REGISTRY="/etc/sandpod/customers.tsv"
-
 [[ -f "$TEMPLATE_SRC" ]] || { echo "Missing template: $TEMPLATE_SRC" >&2; exit 1; }
 [[ -f "$NGINX_SRC" ]] || { echo "Missing nginx template: $NGINX_SRC" >&2; exit 1; }
 
 port_in_use() {
     local port="$1"
+    if [[ -n "${SANDPOD_USED_PORTS:-}" ]]; then
+        case ",${SANDPOD_USED_PORTS}," in
+            *",${port},"*|*" ${port},"*|*",${port} "*|*" ${port} "*) return 0 ;;
+        esac
+        # fall through to real checks so fixtures compose with live ss
+    fi
     if command -v ss >/dev/null 2>&1; then
         ss -ltnH 2>/dev/null | awk '{print $4}' | grep -q ":${port}$" && return 0 || return 1
     fi
@@ -84,8 +102,8 @@ port_in_use() {
 # Auto-allocate loopback ports when not given: web 18001+, ssh 22201+.
 # Re-provisioning the same instance reuses its existing ports/registry entry.
 EXISTING_WEB=""; EXISTING_SSH=""
-if [[ -f "/etc/sandpod/customers.tsv" ]]; then
-    EXISTING_LINE="$(awk -F'\t' -v id="${INSTANCE}" '$1==id{print}' /etc/sandpod/customers.tsv | tail -1 || true)"
+if [[ -f "$REGISTRY" ]]; then
+    EXISTING_LINE="$(awk -F'\t' -v id="${INSTANCE}" '$1==id{print}' "$REGISTRY" | tail -1 || true)"
     if [[ -n "${EXISTING_LINE:-}" ]]; then
         EXISTING_WEB="$(printf '%s' "$EXISTING_LINE" | cut -f4)"
         EXISTING_SSH="$(printf '%s' "$EXISTING_LINE" | cut -f5)"
@@ -118,11 +136,32 @@ if [[ -z "$SSH_PORT" ]]; then
     SSH_PORT=22201
     n=$((${INSTANCE} + 22200))
     if [[ "$n" -ge "$SSH_PORT" ]]; then SSH_PORT="$n"; fi
-    while port_in_use "$SSH_PORT" || grep -qP "\t${SSH_PORT}$" "$REGISTRY" 2>/dev/null; do SSH_PORT=$((SSH_PORT+1)); done
+    while port_in_use "$SSH_PORT" || grep -qP "\t${SSH_PORT}\t" "$REGISTRY" 2>/dev/null; do SSH_PORT=$((SSH_PORT+1)); done
 fi
 
 [[ "$WEB_PORT" =~ ^[0-9]+$ ]] && [[ "$SSH_PORT" =~ ^[0-9]+$ ]] || { echo "Ports must be numeric." >&2; exit 2; }
 [[ "$WEB_PORT" != "$SSH_PORT" ]] || { echo "Web and SSH ports must differ." >&2; exit 2; }
+
+# Resource caps: one customer must never starve neighbours (cgroup v2, enforced
+# both at podman level [Container] and systemd level [Service]; pinned per
+# instance in 20-resources.conf so template changes don't silently move them).
+[[ "$CPUS" =~ ^[0-9]+(\.[0-9]+)?$ ]] || { echo "Invalid --cpus (e.g. 0.5, 1.0, 2)." >&2; exit 2; }
+[[ "$MEMORY" =~ ^[0-9]+[kKmMgG]?$ ]] || { echo "Invalid --memory (e.g. 512m, 1g, 2g)." >&2; exit 2; }
+[[ "$IO_WEIGHT" =~ ^[0-9]+$ ]] && [[ "$IO_WEIGHT" -ge 10 && "$IO_WEIGHT" -le 1000 ]] \
+    || { echo "Invalid --io-weight (10-1000)." >&2; exit 2; }
+CPU_PCT="$(awk -v c="$CPUS" 'BEGIN{printf "%d", c*100}')"
+[[ "$CPU_PCT" -ge 10 && "$CPU_PCT" -le 1600 ]] || { echo "Invalid --cpus (0.1-16)." >&2; exit 2; }
+mem_to_bytes() { # 1g -> 1073741824; plain number = bytes
+    local m="$1" num="${1%[kKmMgG]}" suf="" mult=1
+    if [[ ${#num} -lt ${#m} ]]; then suf="${m: -1}"; fi
+    case "${suf^^}" in "") mult=1;; K) mult=1024;; M) mult=1048576;; G) mult=1073741824;; *) return 1;; esac
+    [[ "$num" =~ ^[0-9]+$ ]] || return 1
+    echo $(( num * mult ))
+}
+MEM_BYTES="$(mem_to_bytes "$MEMORY")" || { echo "Invalid --memory." >&2; exit 2; }
+[[ "$MEM_BYTES" -gt 0 ]] || { echo "Invalid --memory." >&2; exit 2; }
+MEM_HIGH="$(( MEM_BYTES * 9 / 10 ))" # systemd accepts plain bytes; 90% of Max
+MEM_SYS="$(printf '%s' "$MEMORY" | tr '[:lower:]' '[:upper:]')" # 1g -> 1G for systemd
 
 if [[ "$FORCE" -eq 0 ]]; then
     if port_in_use "$WEB_PORT"; then echo "Web port ${WEB_PORT} is in use. Pass --force to override." >&2; exit 1; fi
@@ -164,6 +203,29 @@ PublishPort=127.0.0.1:${SSH_PORT}:22
 EOF
 chown "$SERVICE_USER:$SERVICE_USER" "${DROPIN_DIR}/10-instance.conf"
 chmod 0644 "${DROPIN_DIR}/10-instance.conf"
+# Pin resource caps per instance (CPU/RAM/IO) so this customer can never
+# starve neighbours, and template changes don't silently move existing
+# customers. Re-run provision with new flags to change. Values mirror the
+# template defaults when flags are omitted.
+cat > "${DROPIN_DIR}/20-resources.conf" <<EOF
+# Pinned at provision time by provision-customer.sh
+# (--cpus ${CPUS} --memory ${MEMORY} --io-weight ${IO_WEIGHT}).
+[Container]
+Memory=${MEMORY}
+PidsLimit=512
+PodmanArgs=--memory-swap=${MEMORY} --cpus=${CPUS} --blkio-weight=${IO_WEIGHT} --memory-swappiness=0
+
+[Service]
+CPUQuota=${CPU_PCT}%
+CPUWeight=100
+MemoryHigh=${MEM_HIGH}
+MemoryMax=${MEM_SYS}
+MemorySwapMax=0
+TasksMax=1024
+IOWeight=${IO_WEIGHT}
+EOF
+chown "$SERVICE_USER:$SERVICE_USER" "${DROPIN_DIR}/20-resources.conf"
+chmod 0644 "${DROPIN_DIR}/20-resources.conf"
 
 # 4. Data + config. Control panel owns ~/data layout afterwards.
 install -d -m 0755 "${HOME_DIR}/data" "${HOME_DIR}/data/public_html" "${HOME_DIR}/config" "${HOME_DIR}/config/sites" "${HOME_DIR}/config/supervisor"
@@ -272,21 +334,50 @@ if [[ -n "$SSH_KEY" && "$SKIP_START" -eq 0 ]]; then
 fi
 
 # 7. Registry for fleet helpers (update/reload/monitoring).
-install -d -m 0755 /etc/sandpod
+# Locked with flock so parallel provisions cannot interleave the
+# read-modify-write cycle. Lock file sits next to the registry.
+install -d -m 0755 "$(dirname "$REGISTRY")"
+REG_LOCK="${REGISTRY}.lock"
 if [[ ! -f "$REGISTRY" ]]; then
     printf '#instance\tservice_user\tcontainer\tweb_port\tssh_port\timage\n' > "$REGISTRY"
     chmod 0644 "$REGISTRY"
 fi
-grep -v -P "^${INSTANCE}\t" "$REGISTRY" > "${REGISTRY}.tmp" || true
-printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$INSTANCE" "$SERVICE_USER" "$CONTAINER" "$WEB_PORT" "$SSH_PORT" "$IMAGE" >> "${REGISTRY}.tmp"
-mv "${REGISTRY}.tmp" "$REGISTRY"
+(
+    flock -x 9
+    # Re-validate ports under the lock: another provision may have claimed
+    # them between allocation and here. Bump until free in the locked view,
+    # ignoring our own previous entry for this instance (re-provision reuses).
+    OTHERS="$(grep -v -P "^${INSTANCE}\t" "$REGISTRY" 2>/dev/null || true)"
+    while printf '%s\n' "$OTHERS" | grep -qP "\t${WEB_PORT}\t"; do WEB_PORT=$((WEB_PORT+1)); done
+    while printf '%s\n' "$OTHERS" | grep -qP "\t${SSH_PORT}\t"; do SSH_PORT=$((SSH_PORT+1)); done
+    # The unit drop-in was written before the lock; refresh it if the
+    # locked re-validation bumped a port so unit and registry stay in sync.
+    cat > "${DROPIN_DIR}/10-instance.conf" <<EOF
+[Container]
+Image=${IMAGE}
+PublishPort=127.0.0.1:${WEB_PORT}:80
+PublishPort=127.0.0.1:${SSH_PORT}:22
+EOF
+    chown "$SERVICE_USER:$SERVICE_USER" "${DROPIN_DIR}/10-instance.conf"
+    chmod 0644 "${DROPIN_DIR}/10-instance.conf"
+    printf '%s\n' "$OTHERS" > "${REGISTRY}.tmp"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$INSTANCE" "$SERVICE_USER" "$CONTAINER" "$WEB_PORT" "$SSH_PORT" "$IMAGE" >> "${REGISTRY}.tmp"
+    mv "${REGISTRY}.tmp" "$REGISTRY"
+) 9>"$REG_LOCK"
 
 # 8. Disk quota (best-effort: pending until XFS pquota is active after reboot).
 if [[ "$QUOTA_GB" =~ ^[0-9]+$ && "$QUOTA_GB" -gt 0 ]]; then
     SOFT_GB=$(( QUOTA_GB * 8 / 10 ))
     [[ "$SOFT_GB" -ge 1 ]] || SOFT_GB=1
+    QUOTA_ARGS=("$SERVICE_USER" --hard-gb "$QUOTA_GB" --soft-gb "$SOFT_GB")
+    if [[ "$HARD_INODES" =~ ^[0-9]+$ && "$HARD_INODES" -gt 0 ]]; then
+        QUOTA_ARGS+=(--hard-inodes "$HARD_INODES")
+    fi
+    if [[ "$SOFT_INODES" =~ ^[0-9]+$ && "$SOFT_INODES" -gt 0 ]]; then
+        QUOTA_ARGS+=(--soft-inodes "$SOFT_INODES")
+    fi
     "${REPO_ROOT}/modules/host-storage/scripts/set-customer-quota.sh" \
-        "$SERVICE_USER" --hard-gb "$QUOTA_GB" --soft-gb "$SOFT_GB" || \
+        "${QUOTA_ARGS[@]}" || \
         echo "NOTE: quota not enforced yet (see host-storage README)." >&2
 fi
 

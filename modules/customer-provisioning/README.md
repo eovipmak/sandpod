@@ -40,8 +40,28 @@ sudo modules/customer-provisioning/scripts/remove-customer.sh 002
 restart/enable` -> optional `add-ssh-key.sh` -> append `/etc/sandpod/customers.tsv`
 (`instance, service_user, container, web_port, ssh_port, image`).
 
+Resource caps: each customer is pinned in
+`customer@<id>.container.d/20-resources.conf` (`--cpus 1.0` / `--memory 1g` /
+`--io-weight 100` defaults): podman-level `Memory` + `PidsLimit=512` +
+`PodmanArgs --memory-swap=<mem> --cpus --blkio-weight --memory-swappiness=0`,
+and systemd-level `CPUQuota` (= cpus x 100%) + `CPUWeight=100` + `MemoryHigh`
+(90% of Max) + `MemoryMax` + `MemorySwapMax=0` + `TasksMax=1024` +
+`IOWeight`. A busy customer is throttled/OOM-killed inside its own cgroup and
+cannot starve neighbours. Re-run provision with new flags to change an
+existing customer (the template copy and both drop-ins are rewritten).
+Absolute IO bandwidth caps are intentionally not in the template (they need a
+host device name); add them per host in a `30-io.conf` drop-in if needed.
+
 Port auto-allocation: `18000+id` / `22200+id`, bumped past `ss` listeners and
-registry entries. Use `--force` to reuse a port `ss` sees.
+registry entries (both web and ssh ports match the `\t<port>\t` field; the old
+ssh `\t<port>$` check never matched because the image column follows).
+Re-checked under the registry lock before writing. Use `--force` to reuse a
+port `ss` sees. Registry writes (`provision` + `remove --delete-registry-entry`)
+are serialized with `flock` on `<registry>.lock`; pass
+`--registry <path>` to target a fixture TSV in repo tests
+(`SANDPOD_USED_PORTS="18001,18002"` fakes busy ports without `ss`).
+Quota: `--quota-gb N` (soft 80%) plus optional `--hard-inodes/--soft-inodes`
+forwarded to `host-storage/set-customer-quota.sh`.
 
 ## Registry
 

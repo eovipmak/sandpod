@@ -15,13 +15,34 @@ Volume=/usr/lib64/libonig.so.105:/usr/lib64/libonig.so.105:ro
 Volume=/opt/sandpod/node:/opt/sandpod/node:ro
 UserNS=keep-id:uid=1000,gid=1000
 User=0:0
+# Hard caps: one customer per container. A busy customer is throttled (CPU/IO)
+# or OOM-killed inside its own cgroup and never starves neighbours.
+# Podman-level caps (visible inside the container, enforced even if systemd
+# delegation is unavailable on the host):
 Memory=1g
 PidsLimit=512
+# --memory-swap=<memory> disables container swap; swappiness=0 avoids swap
+# IO storms. --cpus mirrors [Service] CPUQuota below. Equal --blkio-weight
+# on every customer means equal shares when the disk is contended.
+PodmanArgs=--memory-swap=1g --cpus=1.0 --blkio-weight=100 --memory-swappiness=0
 
 [Service]
 Restart=always
 TimeoutStartSec=900
+# Systemd-level caps (cover the whole service cgroup including conmon/podman
+# overhead, so runtime overhead cannot escape the cap either):
+# 100% = 1 CPU hard cap; CPUWeight/IOWeight give equal fair shares.
 CPUQuota=100%
+CPUWeight=100
+# High = start reclaim pressure at 90% of Max; Max = hard OOM-kill line.
+# SwapMax=0 disables swap for the whole service. TasksMax caps the service
+# (payload 512 + runtime overhead headroom); the container payload itself is
+# capped by PidsLimit above.
+MemoryHigh=900M
+MemoryMax=1G
+MemorySwapMax=0
+TasksMax=1024
+IOWeight=100
 
 [Install]
 WantedBy=default.target

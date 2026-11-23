@@ -12,7 +12,10 @@
 * `scripts/backup-customer.sh` - `tar` of `~/data` + `~/config` to
   `/var/backups/sandpod/<id>-<ts>.tar.gz`, keeps 7. Pair with
   `host-mariadb/scripts/backup-site-db.sh` for a full site backup.
-* `scripts/resource-report.sh` - `podman stats` per registry customer.
+* `scripts/resource-report.sh` - `podman stats` per registry customer plus a
+  `DISK` column joined from `xfs_quota report -p -b -h` by project name
+  (`quota-off` while accounting is off). `--xfs-report-file <file>` replays a
+  saved report (repo-test hook).
 
 ## Log policy
 

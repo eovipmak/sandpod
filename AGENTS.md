@@ -24,7 +24,7 @@ systemctl --user daemon-reload
 systemctl --user start 'customer@001.service'
 ```
 
-Pilot ports are loopback-only (`127.0.0.1:18001`→80, `127.0.0.1:22201`→22). New customers need unused ports. Quadlet uses `%h` (account home for `data`/`config`) and `%i` (instance id); limits are 1 CPU / 1 GiB / 512 pids.
+Pilot ports are loopback-only (`127.0.0.1:18001`→80, `127.0.0.1:22201`→22). New customers need unused ports. Quadlet uses `%h` (account home for `data`/`config`) and `%i` (instance id); limits are 1 CPU (`CPUQuota=100%`/`--cpus=1.0`) / 1 GiB RAM swap 0 (`Memory=1g`, `MemorySwapMax=0`) / 512 pids (`PidsLimit`, `TasksMax=1024`) / fair-share `CPUWeight=100`+`IOWeight=100`, pinned per instance in `20-resources.conf` (`--cpus/--memory/--io-weight` flags).
 
 ## Shared PHP runtimes (order matters)
 
