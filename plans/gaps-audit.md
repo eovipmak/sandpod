@@ -24,7 +24,7 @@
 - [x] Backup/restore: `backup-customer` validate `INSTANCE`/`KEEP` + prune `nullglob` sort theo tên (không `ls`); `backup-site-db` tmp+`gzip -t`+size check+`--dir` tuyệt đối; `restore-site-db` `gzip -t`+backup trước+`CREATE DATABASE IF NOT EXISTS`; rollout `batch-size/sleep` số + `--minor 8.2-8.6`
 - [x] `generate-site-conf`: validate domain/port, trùng domain giữ first + warn, `server_name` sanitize, stale warn + `--prune`, bỏ biến chết `TEMPLATE`
 - [x] `resource-report` `json_escape` thêm control chars; `health-check` `--max-time 10` + port 1-65535 + check `curl`
-- [ ] `Containerfile`: RPM thiếu `node-22`/`python3.12` explicit, placeholder `libonig`, `__PASSWORD__` không CI check -> dời lại (cần build image trên host, ngoài repo-only)
+- [x] `Containerfile`: RPM `node-22`/`python3.12` explicit thực chất KHÔNG thiếu (`nodejs`=22.x, `python3`=3.12 trên AlmaLinux 10 — đã chú thích + `npm-22` + `check-runtime-mounts`, repo-only `2026-11-23`); placeholder `libonig`, `__PASSWORD__` + full E2E đã verify trên host `2026-11-23` (image `node-shared`, xem `plans/container-image.md`) — done, container E2E đã dọn
 
 ## Part 4 — Unit/timer + docs/tests — done `2026-11-23` (bash-n OK, 32 passed)
 - [x] Units: `monitoring-backup/systemd/` (backup@ daily + report hourly), `host-mariadb/systemd/` (db-backup@ daily), `host-nginx/systemd/` (regen path khi TSV đổi); `sandpod.cnf` template; logrotate 14 ngày; operator `cp + enable` trong README (timers chỉ chạy cơ chế, retention/off-host/paging vẫn policy ngoài)

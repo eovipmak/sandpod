@@ -7,6 +7,9 @@ This module builds the first rootless customer container prototype.
 - `Containerfile`: AlmaLinux 10 image and customer-side packages.
 - `config/`: SSH, internal Nginx, and process-supervisor configuration.
 - `scripts/runtime-reload`: gracefully reload one PHP-FPM minor version.
+- `scripts/check-runtime-mounts`: preflight check for runtime wiring
+  (supervisor password substituted, symlinks resolve or fall back to RPMs,
+  libonig mount present).
 - `quadlet/customer@.container`: reusable rootless Podman template.
 - `quadlet/customer@001.container`: pilot instance symlink.
 - `quadlet/customer@001.container.d/`: pilot-specific host ports.
@@ -95,6 +98,26 @@ The response identifies the PHP version. To change a site's version, update
 its `map` entry in the mounted Nginx config, then run `nginx -t` and reload
 Nginx inside the container. The hostnames above are test values, not
 production domains.
+
+## Runtime preflight check (repo-only + post-build)
+
+`scripts/check-runtime-mounts [--root DIR]` verifies the image wiring without
+starting a container: no `__SUPERVISOR_PASSWORD__` left in
+`supervisord.conf`, every `/usr/local/bin` runtime name resolves to its
+shared mount or falls back to its image RPM (`WARN` for Remi PHP names, which
+have no image fallback by design), and `libonig.so.105` is the real host file
+rather than the empty image placeholder. After a host rebuild, run it against
+the new image before rollout:
+
+```sh
+podman run --rm <img> sandpod-check-runtime-mounts
+```
+
+Fallback mapping (AlmaLinux 10 has no `nodejs22` / `python3.12` interpreter
+packages): `nodejs` tracks Node 22.x and `python3` is Python 3.12, so those
+two RPMs ARE the `node-22` / `python3.12` fallbacks. Full E2E (5× `php8X.test`,
+port apps with/without shared mounts, SSH key inject, `USR2`/restart,
+real-domain health-checks) still needs a host run — see `plans/container-image.md`.
 
 ## Site directories
 

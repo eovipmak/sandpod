@@ -19,6 +19,8 @@ RUN dnf -y install dnf-plugins-core epel-release \
         libatomic \
         libxslt \
         nginx \
+        # NOTE: AlmaLinux 10 has no `nodejs22` package: `nodejs` tracks
+        # Node 22.x and IS the node-22 fallback (`dnf list`: nodejs-1:22.x).
         nodejs \
         nodejs-npm \
         nodejs24 \
@@ -28,6 +30,8 @@ RUN dnf -y install dnf-plugins-core epel-release \
         openssh-server \
         pkgconf-pkg-config \
         procps-ng \
+        # NOTE: AlmaLinux 10 has no `python3.12` interpreter package:
+        # `python3` is Python 3.12 and IS the python3.12 fallback.
         python3 \
         python3.13 \
         python3.14 \
@@ -61,6 +65,10 @@ RUN useradd --create-home --shell /bin/bash customer \
         /opt/sandpod/python \
         /srv/customer/public_html \
         /usr/lib64 \
+    # Placeholder overlaid by the host read-only mount of the real libonig
+    # (Remi PHP dependency). Without the mount the file is empty and Remi
+    # php-fpm fails fast; use scripts/check-runtime-mounts for the
+    # preflight check before shipping a rebuilt image.
     && install -m 0644 /dev/null /usr/lib64/libonig.so.105 \
     && ssh-keygen -A
 
@@ -70,12 +78,14 @@ COPY config/supervisord.conf /etc/supervisord.conf
 COPY config/php-fpm/ /etc/sandpod/php-fpm/
 COPY config/default-index.html /srv/customer/public_html/index.html
 COPY scripts/runtime-reload /usr/local/bin/sandpod-runtime-reload
+COPY scripts/check-runtime-mounts /usr/local/bin/sandpod-check-runtime-mounts
 
 RUN supervisor_password="$(openssl rand -hex 32)" \
     && sed -i "s/__SUPERVISOR_PASSWORD__/${supervisor_password}/g" /etc/supervisord.conf \
     && unset supervisor_password \
     && chmod 0600 /etc/supervisord.conf \
     && chmod 0755 /usr/local/bin/sandpod-runtime-reload \
+    && chmod 0755 /usr/local/bin/sandpod-check-runtime-mounts \
     && ln -s /opt/remi/php82/root/usr/bin/php /usr/local/bin/php82 \
     && ln -s /opt/remi/php83/root/usr/bin/php /usr/local/bin/php83 \
     && ln -s /opt/remi/php84/root/usr/bin/php /usr/local/bin/php84 \
@@ -91,6 +101,7 @@ RUN supervisor_password="$(openssl rand -hex 32)" \
     && ln -s /opt/sandpod/node/24/bin/node /usr/local/bin/node-24 \
     && ln -s /opt/sandpod/node/26/bin/node /usr/local/bin/node-26 \
     && ln -s /opt/sandpod/node/default/bin/npm /usr/local/bin/npm \
+    && ln -s /opt/sandpod/node/22/bin/npm /usr/local/bin/npm-22 \
     && ln -s /opt/sandpod/node/24/bin/npm /usr/local/bin/npm-24 \
     && ln -s /opt/sandpod/node/26/bin/npm /usr/local/bin/npm-26 \
     && ln -s /opt/sandpod/python/default/bin/python3 /usr/local/bin/python3 \

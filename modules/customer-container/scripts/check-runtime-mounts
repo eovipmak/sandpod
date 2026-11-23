@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# check-runtime-mounts — preflight check for customer image runtime wiring.
+#
+# Verifies, against a filesystem tree (default /):
+#   1. supervisord.conf contains no unsubstituted __SUPERVISOR_PASSWORD__.
+#   2. every /usr/local/bin runtime symlink either resolves (shared mount
+#      present) or has an image RPM fallback in /usr/bin (mount absent).
+#   3. /usr/lib64/libonig.so.105 is non-empty (host mount present) —
+#      empty placeholder without the mount makes Remi php-fpm fail fast.
+#
+# Usage: check-runtime-mounts [--root DIR]
+# Exit 0 when no FAIL lines, 1 otherwise. WARN lines never fail.
+# Repo-only friendly: point --root at a fixture tree under /tmp.
+set -euo pipefail
+
+ROOT="/"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --root) ROOT="${2:-/}"; shift 2 ;;
+        -h|--help)
+            echo "Usage: check-runtime-mounts [--root DIR]" >&2; exit 0 ;;
+        *) echo "Unknown arg: $1 (see --help)" >&2; exit 2 ;;
+    esac
+done
+
+fail=0
+say() { printf '%s %s\n' "$1" "$2"; }
+pass() { say "OK  " "$1"; }
+warn() { say "WARN" "$1"; }
+fail_line() { say "FAIL" "$1"; fail=1; }
+
+# 1. supervisor password must be substituted at build time.
+sup_conf="$ROOT/etc/supervisord.conf"
+if [[ -f "$sup_conf" ]]; then
+    if grep -q '__SUPERVISOR_PASSWORD__' "$sup_conf"; then
+        fail_line "$sup_conf still contains __SUPERVISOR_PASSWORD__"
+    else
+        pass "$sup_conf has no __SUPERVISOR_PASSWORD__ placeholder"
+    fi
+else
+    warn "$sup_conf not found under $ROOT (skipped)"
+fi
+
+# 2. symlink -> shared mount, else RPM fallback in /usr/bin.
+# Format: link-name:fallback-binary. Fallback "-" means no image fallback
+# by design (Remi PHP only exists on the host): a dangling link is a WARN
+# (needs host mount), anything else dangling without its fallback is a FAIL.
+entries=(
+    "php:-" "php82:-" "php83:-" "php84:-" "php85:-" "php86:-"
+    "node:node" "node-22:node" "node-24:node" "node-26:node"
+    "npm:npm" "npm-22:npm" "npm-24:npm" "npm-26:npm"
+    "python3:python3" "python3.12:python3.12"
+    "python3.13:python3.13" "python3.14:python3.14"
+)
+for e in "${entries[@]}"; do
+    name="${e%%:*}"; fallback="${e##*:}"
+    link="$ROOT/usr/local/bin/$name"
+    if [[ -L "$link" ]] && [[ -e "$link" ]]; then
+        pass "$name resolves to shared mount ($(readlink "$link"))"
+    elif [[ "$fallback" == "-" ]]; then
+        if [[ -L "$link" ]]; then
+            warn "$name needs host Remi mount (no image fallback by design)"
+        else
+            fail_line "$name missing from /usr/local/bin"
+        fi
+    elif [[ -L "$link" ]] || [[ -e "$link" ]]; then
+        # Dangling symlink (mount absent) or plain file: need RPM fallback.
+        if [[ -x "$ROOT/usr/bin/$fallback" ]]; then
+            pass "$name falls back to RPM /usr/bin/$fallback (mount absent)"
+        else
+            fail_line "$name is dangling with no fallback /usr/bin/$fallback"
+        fi
+    else
+        fail_line "$name missing from /usr/local/bin"
+    fi
+done
+
+# 3. libonig placeholder vs host mount.
+lib="$ROOT/usr/lib64/libonig.so.105"
+if [[ -s "$lib" ]]; then
+    pass "$lib non-empty (host mount present)"
+elif [[ -e "$lib" ]]; then
+    warn "$lib is empty placeholder (needs host read-only mount for Remi PHP)"
+else
+    fail_line "$lib missing entirely"
+fi
+
+exit "$fail"
