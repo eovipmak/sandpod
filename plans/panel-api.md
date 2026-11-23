@@ -23,9 +23,10 @@
 * Base: `http://127.0.0.1:8741/v1`, JSON request/response, lỗi `{error, exitCode, stderr}`.
 * `GET /v1/customers` ← `customers.tsv`; `GET .../sites` ← `list-sites.sh --json` (panel cấm parse text).
 * `POST sites` ← `add-site.sh <user> <container> <domain> [--php] [--primary]`; `PATCH` ← `set-php-version.sh`; port-app ← `add-port-app.sh --port 3000-3999 --command` (panel cấp port, API chỉ validate `valid_port`).
-* `POST /v1/customers` (async) ← `provision-customer.sh`; `DELETE` ← `remove-customer.sh` (mặc định giữ data; `--delete-data/--delete-user` phải explicit + confirm).
+* `POST /v1/customers` (async) ← `provision-customer.sh`; `DELETE /v1/customers/{id}` (async, query flags) ← `remove-customer.sh` (mặc định giữ data; `--delete-data/--delete-user/--delete-registry-entry` phải explicit + confirm).
 * DB: `POST /v1/dbs` ← `create-site-db.sh`; trả creds 1 lần, API không lưu disk (ghi rõ trong openapi).
 * Rollout: `POST /v1/rollouts/php|app` ← `rollout-*.sh --batch-size --sleep-seconds --skip-update`; dừng batch đầu fail (fix-forward, re-run).
+* Bổ sung (đồng nhất `app.py`/`sh.py`, không re-implement): `POST /v1/.../ssh-keys` ← `add-ssh-key.sh` (async); `POST /v1/.../reload` ← `reload-customer-php/app.sh` (sync); `GET /v1/.../resources` ← `resource-report.sh --json`; `GET /v1/jobs[/{id}]` poll async (summaries, không stdout).
 * Xem `modules/panel-api/openapi.yaml` là source-of-truth máy đọc được.
 
 ## 2. Việc làm
@@ -33,7 +34,7 @@
 ### P1 — Khung + read-only (panel dùng ngay)
 * [x] `modules/panel-api/{openapi.yaml,server.py,README.md,sandpod-panel-api.service,tests/}` (stdlib prototype)
   `scope: in-scope — cơ chế panel đọc registry/report (scope.md §2).`
-* [x] FastAPI rewrite (`app.py`+`sh.py`+`jobs.py`, `requirements.txt`): pydantic, `/docs`, `X-Request-ID`, `?dry_run=1` — done `2026-11-23` (`test_api.py` 3 passed; live uvicorn fixture health/docs/dry_run OK)
+* [x] FastAPI rewrite (`app.py`+`sh.py`+`jobs.py`, `requirements.txt`): pydantic, `/docs`, `X-Request-ID`, `?dry_run=1` — done `2026-11-23` (suite `32 passed`: `test_api.py` 7, `test_p3_jobs.py` 5, `test_p2_hardening.py` 6, `test_p4_ops.py` 8, `test_contract.py` 6; live uvicorn fixture health/docs/dry_run OK)
   `scope: in-scope — cùng cơ chế trên, đổi stack transport; không thêm policy/DNS/TLS.`
 * [x] Auth bearer + audit log (journal JSON: rid/method/path/code/latency).
   `scope: in-scope — cơ chế xác thực panel-cùng-host (token file do panel cấp); auth end-user thuộc panel, ngoài scope.`
@@ -49,7 +50,7 @@
   `scope: in-scope — transport tương thích client, không đổi semantics script.`
 * [x] `.bak` rollback giữ nguyên trong script; API forward `exit 1 + stderr` + `warnings` (`raise_script_error`).
   `scope: in-scope — giữ mechanism rollback của script, không thêm policy.`
-* [x] Test `test_api.py` P2 (4 tests) + live uvicorn fixture: PATCH 8.2 → warnings, DELETE dry_run cmd, domain xấu → 400.
+* [x] Test `test_api.py` P2 (7 tests) + live uvicorn fixture: PATCH 8.2 → warnings, DELETE dry_run cmd, domain xấu → 400.
   `scope: in-scope — verify repo-only.`
 
 ### P3 — Async jobs (provision/infra) — done `2026-11-23`
@@ -63,9 +64,9 @@
   `scope: in-scope — reverse-proxy HTTP thuần + rollout batch (scope.md §2); TLS/ACME/DNS ngoài scope, không đụng.`
 
 ### P4 — Hardening + docs (không rate-limit IP: out-of-scope theo scope.md §3, edge team sở hữu; loopback 1 client nên vô tác dụng) — done `2026-11-23`
-* [x] systemd hardening (`ProtectSystem=strict`, `PrivateTmp=yes`, `NoNewPrivileges`), enforce token file `0600` fail-closed lúc boot — done `2026-11-23` (`ExecStartPre` check `stat -c %a = 600` + `SANDPOD_REQUIRE_AUTH=1` fail-closed trong `app.py`; dev/fixture không set env vẫn fail-open cho test repo-only).
+* [x] systemd hardening (`ProtectSystem=strict`, `PrivateTmp=yes`, `NoNewPrivileges`), enforce token file `0600` fail-closed lúc boot **+ per-request** — done `2026-11-23` (`ExecStartPre` check `stat -c %a = 600` + `SANDPOD_REQUIRE_AUTH=1` fail-closed trong `app.py` cả khi mất file/mode đổi sau boot; dev/fixture không set env vẫn fail-open cho test repo-only; `test_p4_ops.py` 8 tests: 401/500/public-health+docs).
   `scope: in-scope — hardening daemon mechanism trên host (ngoài phạm vi isolation dữ liệu KH).`
-* [x] Self-protection đúng phạm vi thay rate-limit: cap job đồng thời toàn cục (`jobs._MAX_CONCURRENT=10` → `409`), body-size limit (`1 MiB` → `413`), timeout (đã có 1800s/7200s) — done `2026-11-23`.
+* [x] Self-protection đúng phạm vi thay rate-limit: cap job đồng thời toàn cục (`jobs.acquire()` atomic cap+instance, `10` → `409`), body-size limit (`1 MiB` → `413`, cả chunked), timeout (sync 120s/job 1800s/rollout 7200s, fallback cũng 7200s) — done `2026-11-23` (test: cap 409, body 413, prune bound, tmp-cleanup, `claimed` không kẹt).
   `scope: in-scope — giới hạn tài nguyên daemon tự bảo vệ; rate-limit per-site/DDoS/WAF → edge team, ngoài scope.`
 * [x] `README.md` vận hành: tạo token, start service, curl ví dụ, log xem ở đâu — done `2026-11-23` (`journalctl -u`, `stat -c %a`, caps doc).
   `scope: in-scope — operator docs cho cơ chế.`
@@ -75,10 +76,10 @@
 ## 3. Verify (repo-only)
 
 ```sh
-bash -n modules/panel-api/*.sh 2>/dev/null; python3 -m py_compile modules/panel-api/server.py
+bash -n modules/panel-api/*.sh 2>/dev/null; python3 -m py_compile modules/panel-api/server.py modules/panel-api/app.py modules/panel-api/sh.py modules/panel-api/jobs.py
 python3 -m pytest modules/panel-api/tests/ -q
 python3 -c "import yaml,sys; yaml.safe_load(open('modules/panel-api/openapi.yaml'))" # hoặc python json check nếu thiếu pyyaml
-grep -c '^  /v1/' modules/panel-api/openapi.yaml  # contract coverage
+grep -c '^  /' modules/panel-api/openapi.yaml  # contract coverage (paths dùng relative, base /v1 nằm ở servers.url)
 ```
 
 Không làm: start service thật, provision thật, curl host thật (cần host/E2E, để phase sau khi có yêu cầu explicit).

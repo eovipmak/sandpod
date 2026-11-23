@@ -68,7 +68,8 @@ def _finish(jid, code, so, se):
 
 
 def submit(label: str, script: str, args: list, timeout: int = 1800,
-           instance: str | None = None) -> str:
+           instance: str | None = None,
+           cleanup: list | None = None) -> str:
     jid = uuid.uuid4().hex[:12]
     with _LOCK:
         _JOBS[jid] = {"jobId": jid, "label": label, "status": "queued",
@@ -78,13 +79,27 @@ def submit(label: str, script: str, args: list, timeout: int = 1800,
             _INSTANCE_BUSY[instance] = jid
 
     def _run():
+        import os as _os
         with _LOCK:
             if jid in _JOBS:
                 _JOBS[jid]["status"] = "running"
         code, so, se = run_script(script, args, timeout=timeout)
         _finish(jid, code, so, se)
+        for path in cleanup or []:
+            try:
+                _os.unlink(path)
+            except OSError:
+                pass
 
-    threading.Thread(target=_run, daemon=True).start()
+    try:
+        threading.Thread(target=_run, daemon=True).start()
+    except Exception:
+        # Never leave a stale "claimed"/jid reservation -> permanent 409.
+        with _LOCK:
+            _JOBS.pop(jid, None)
+            if instance and _INSTANCE_BUSY.get(instance) == jid:
+                del _INSTANCE_BUSY[instance]
+        raise
     return jid
 
 
@@ -113,14 +128,25 @@ def submit_chain(label: str, steps: list[tuple[str, list]], timeout: int = 1800,
                 break
         _finish(jid, code, "".join(out_s)[-8000:], "".join(out_e)[-8000:])
 
-    threading.Thread(target=_run, daemon=True).start()
+    try:
+        threading.Thread(target=_run, daemon=True).start()
+    except Exception:
+        # Never leave a stale "claimed"/jid reservation -> permanent 409.
+        with _LOCK:
+            _JOBS.pop(jid, None)
+            if instance and _INSTANCE_BUSY.get(instance) == jid:
+                del _INSTANCE_BUSY[instance]
+        raise
     return jid
 
 
 def try_acquire(instance: str) -> bool:
     """Reserve instance if no queued/running job. Returns True + reserves.
-    submit() with same instance overwrites the reservation with the jobId.
-    dry_run paths must NOT call this."""
+
+    Legacy path (cap checked separately by old callers); new code uses
+    acquire() for the atomic cap+instance check. submit() with same
+    instance overwrites the reservation with the jobId. dry_run paths
+    must NOT call this."""
     with _LOCK:
         jid = _INSTANCE_BUSY.get(instance)
         if not jid:
@@ -133,6 +159,34 @@ def try_acquire(instance: str) -> bool:
             _INSTANCE_BUSY[instance] = "claimed"
             return True
         return False
+
+
+def acquire(instance: str | None) -> str:
+    """Atomic cap + instance check (fixes ensure_capacity→try_acquire TOCTOU).
+
+    Returns 'ok' (reserved as "claimed", caller must submit or release),
+    'busy' (this instance already has a queued/running job), or
+    'full' (global concurrent cap reached). Single lock, no race between
+    the two checks. Pass instance=None for fleet-wide ops with no
+    per-instance lock (cap check only, no reservation)."""
+    with _LOCK:
+        active = sum(1 for j in _JOBS.values()
+                     if j.get("status") in ("queued", "running"))
+        if active >= _MAX_CONCURRENT:
+            return "full"
+        if instance is None:
+            return "ok"
+        jid = _INSTANCE_BUSY.get(instance)
+        if not jid:
+            _INSTANCE_BUSY[instance] = "claimed"
+            return "ok"
+        if jid == "claimed":
+            return "busy"
+        j = _JOBS.get(jid)
+        if not j or j["status"] in ("done", "failed"):
+            _INSTANCE_BUSY[instance] = "claimed"
+            return "ok"
+        return "busy"
 
 
 def release(instance: str):

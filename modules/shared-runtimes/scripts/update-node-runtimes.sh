@@ -22,6 +22,13 @@ while [[ $# -gt 0 ]]; do case "$1" in
   --prefix) PREFIX="${2:-}"; ARGS+=("$1" "$2"); shift 2 ;;
   *) ARGS+=("$1"); shift ;;
 esac; done
+# $PREFIX feeds restorecon -RF below: refuse system paths (installer
+# re-validates as well before any rm -rf).
+[[ "$PREFIX" == /* ]] || { echo "--prefix must be absolute." >&2; exit 2; }
+case "$PREFIX" in
+  /|/usr|/etc|/var|/home|/root|/boot|/proc|/sys|/dev|/run|/tmp|/bin|/sbin|/lib|/lib64)
+    echo "Refusing --prefix ${PREFIX} (system path)." >&2; exit 2 ;;
+esac
 
 # No version flags: installer defaults pin the current versions (idempotent).
 "${SCRIPT_DIR}/install-node-runtimes.sh" "${ARGS[@]}"

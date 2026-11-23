@@ -1,0 +1,12 @@
+# Hourly fleet report. Read journal with:
+#   journalctl -u sandpod-resource-report.service --since today
+[Unit]
+Description=SandPod hourly resource report
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=600
+Persistent=true
+
+[Install]
+WantedBy=timers.target

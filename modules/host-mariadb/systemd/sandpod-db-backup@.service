@@ -1,0 +1,13 @@
+# Nightly per-DB dump. Instantiate per site database (names are
+# panel-owned; pair each with its customer's sandpod-backup@<id>.timer):
+#   systemctl enable --now sandpod-db-backup@shop_db.timer
+# Dumps land in /var/backups/sandpod (0700). Retention/off-host sync is
+# ops/panel policy (out of scope); the script itself keeps no history.
+[Unit]
+Description=SandPod nightly dump for site database %i
+After=mariadb.service
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/opt/sandpod/repo/modules/host-mariadb/scripts/backup-site-db.sh %i

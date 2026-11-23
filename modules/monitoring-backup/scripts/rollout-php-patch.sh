@@ -20,6 +20,8 @@ while [[ $# -gt 0 ]]; do case "$1" in
   --registry) REGISTRY="${2:-}"; shift 2 ;;
   *) echo "Unknown arg: $1" >&2; exit 2 ;;
 esac; done
+[[ "$BATCH" =~ ^[0-9]+$ && "$BATCH" -ge 1 ]] || { echo "--batch-size must be a positive integer." >&2; exit 2; }
+[[ "$SLEEP_S" =~ ^[0-9]+$ ]] || { echo "--sleep-seconds must be a non-negative integer." >&2; exit 2; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
@@ -27,6 +29,9 @@ RELOAD="${REPO_ROOT}/modules/shared-runtimes/scripts/reload-customer-php.sh"
 HEALTH="${REPO_ROOT}/modules/customer-provisioning/scripts/health-check.sh"
 
 [[ ${#MINORS[@]} -gt 0 ]] || MINORS=(8.2 8.3 8.4 8.5 8.6)
+for m in "${MINORS[@]}"; do
+    [[ "$m" =~ ^8\.[2-6]$ ]] || { echo "Unsupported --minor: $m (want 8.2-8.6)." >&2; exit 2; }
+done
 [[ -f "$REGISTRY" ]] || { echo "Missing $REGISTRY." >&2; exit 1; }
 
 if [[ "$SKIP_UPDATE" -eq 0 ]]; then

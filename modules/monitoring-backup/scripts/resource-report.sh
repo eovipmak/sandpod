@@ -94,9 +94,10 @@ inodes_for_user() { # <user> <uid-or-empty>
     fi
     echo "${I_USED[$name]} used / ${I_SOFT[$name]} soft / ${I_HARD[$name]} hard"
 }
-json_escape() { # minimal: constrained charset (registry tsv), escape \ and "
+json_escape() { # minimal: constrained charset (registry tsv), escape \ " + controls
     local s="$1"
     s="${s//\\/\\\\}"; s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"; s="${s//$'\r'/\\r}"; s="${s//$'\t'/\\t}"
     printf '%s' "$s"
 }
 

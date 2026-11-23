@@ -1,0 +1,14 @@
+# Daily per-customer backup. Instantiate per instance the panel owns:
+#   systemctl enable --now sandpod-backup@001.timer
+# Pair with sandpod-db-backup@<db>.timer per site DB for a full backup
+# (DB names are panel-owned; see host-mariadb README).
+[Unit]
+Description=SandPod daily backup for customer %i
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=1800
+Persistent=true
+
+[Install]
+WantedBy=timers.target

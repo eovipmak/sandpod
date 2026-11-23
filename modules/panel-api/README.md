@@ -97,6 +97,7 @@ Token: `curl -H "Authorization: Bearer $(cat /etc/sandpod/panel-api.token)" ...`
 ## Verify repo-only
 
 ```sh
-/tmp/sapi-venv/bin/python -m pytest modules/panel-api/tests/test_api.py -q
-/tmp/sapi-venv/bin/python -m pytest modules/panel-api/tests/test_contract.py -q  # openapi↔scripts, cấm leak policy
+/tmp/sapi-venv/bin/python -m pytest modules/panel-api/tests/ -q  # 32 passed: api/contract/p2-hardening/p4-ops/p3-jobs
+for sh in $(find modules -name "*.sh"); do bash -n "$sh"; done
+/tmp/sapi-venv/bin/python -m py_compile modules/panel-api/*.py
 ```

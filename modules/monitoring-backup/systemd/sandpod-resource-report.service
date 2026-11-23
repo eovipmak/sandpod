@@ -1,0 +1,11 @@
+# Fleet resource report (read-only). Output (--json) goes to the journal;
+# alerting/paging on top of it belongs to ops/panel (out of scope, scope.md).
+# Panel API `GET /v1/customers/{id}/resources` serves the same data live.
+[Unit]
+Description=SandPod fleet resource report (podman stats + XFS quotas)
+After=network.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/opt/sandpod/repo/modules/monitoring-backup/scripts/resource-report.sh --json

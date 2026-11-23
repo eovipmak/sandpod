@@ -36,6 +36,12 @@
 ## Pha 3: Panel contract
 
 - [x] **3.1 Spec v2 (`docs/control-panel.md`)** — done: `2026-11-20` (đóng băng node mount, exit codes 0/1/2, TSV schemas, EOL warn policy; `list-sites.sh --json` cho panel)
+- [x] **3.2 Spec v3 (`docs/control-panel.md`)** — done: `2026-11-23` (fnm `/opt/sandpod/node/<major>`, uv `/opt/sandpod/python/<ver>`, mount RO mới, panel dùng absolute path + fallback, `reload-customer-app` / `rollout-app-patch`)
+- [x] **3.3 panel-api P1-P4 (Spec v4, `modules/panel-api/`, xem `plans/panel-api.md`)** — done: `2026-11-23` (repo-only, không host/E2E)
+  - [x] P1 khung + read-only + FastAPI rewrite (`app.py`+`sh.py`+`jobs.py`, `/docs`, `X-Request-ID`, `?dry_run=1`) + auth bearer + audit log
+  - [x] P2 site ops sync (`POST/PATCH/DELETE sites`, `POST/DELETE port-apps`, `POST reload`, EOL `warnings[]`, DELETE query flags, `.bak` rollback passthrough)
+  - [x] P3 async jobs (provision/remove/backup/DB/nginx-reload/rollout `202+jobId`, lock instance `409`, fail-fast `400`, creds 1 lần, fleet lock)
+  - [x] P4 hardening + docs (systemd `ProtectSystem=strict`, token `0600` fail-closed, cap 10 jobs `409` + body 1 MiB `413` + timeout, `README.md` vận hành; không rate-limit IP — edge-owned, loopback vô tác dụng)
 
 ## Thứ tự thực hiện (bắt buộc)
 

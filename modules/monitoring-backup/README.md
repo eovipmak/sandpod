@@ -36,14 +36,32 @@
 * Customer Nginx/FPM/cron/sshd log to container stdout/stderr via supervisord
   (`/dev/fd/1`, `/proc/self/fd/2`) - collected by `podman logs` / journald of
   the owning user manager. No files to rotate inside containers by design.
-* Host nginx: default `/var/log/nginx/*` with system `logrotate`. Keep 14 days.
+* Host nginx: default `/var/log/nginx/*` with system `logrotate`. Keep 14 days
+  (template: `../host-nginx/config/sandpod-logrotate.conf` →
+  `/etc/logrotate.d/sandpod`).
 * Retention: 7 daily customer tars + DB dumps; sync `/var/backups/sandpod` off-host.
 
-## Not enforced yet (before production)
+## Systemd scheduling (templates, operator installs on host)
 
-* Disk quota: enforced by the `host-storage` module (XFS project per account,
-  10G default). Active only after the `pquota` reboot; `resource-report.sh`
-  falls back to `du` until then.
-* Alerting: no CPU/RAM/disk alerts, no dead-container auto-notify. Next step is
-  a systemd timer running `resource-report.sh` + `health-check.sh` per customer
-  and paging on failure.
+`systemd/` holds templates (repo checkout at `/opt/sandpod/repo`, same
+convention as `sandpod-panel-api.service`). They only RUN the mechanism —
+retention count stays in the scripts, off-host sync and paging stay outside:
+
+```sh
+sudo cp modules/monitoring-backup/systemd/* /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now 'sandpod-backup@001.timer'  # per customer, daily
+sudo systemctl enable --now sandpod-resource-report.timer  # fleet, hourly
+journalctl -u sandpod-resource-report.service --since today  # JSON output
+```
+
+## Before production (policy-owned, ngoài scope repo)
+
+* Disk quota: mechanism enforced by `host-storage` (XFS project per account,
+  soft 8G/hard 10G default). Active only after the `pquota` reboot;
+  `resource-report.sh` falls back to `du` until then. Retention/off-host sync
+  thuộc ops/panel (ngoài scope `docs/scope.md` §3).
+* Alerting/paging: repo chỉ xuất dữ liệu (`resource-report --json` +
+  `health-check.sh`, hoặc `GET /v1/.../resources` qua panel-api);
+  `sandpod-resource-report.timer` (hourly, xem `systemd/` ở trên) chỉ chạy
+  cơ chế — ngưỡng page do ops/panel sở hữu.

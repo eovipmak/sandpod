@@ -18,7 +18,6 @@ set -euo pipefail
 REGISTRY="${REGISTRY:-/etc/sandpod/sites.tsv}"
 CUSTOMERS="${CUSTOMERS:-/etc/sandpod/customers.tsv}"
 OUT_DIR="${OUT_DIR:-/etc/nginx/conf.d}"
-TEMPLATE="${TEMPLATE:-}"
 
 [[ -f "$CUSTOMERS" ]] || { echo "Missing $CUSTOMERS (provision a customer first)." >&2; exit 1; }
 [[ -f "$REGISTRY" ]] || {
@@ -30,13 +29,24 @@ TEMPLATE="${TEMPLATE:-}"
 declare -A WEB_PORT=()
 while IFS=$'\t' read -r inst user cont web ssh img; do
     [[ "$inst" =~ ^#.*$ || -z "$inst" ]] && continue
+    [[ "$web" =~ ^[0-9]+$ && "$web" -ge 1 && "$web" -le 65535 ]] \
+        || { echo "Instance $inst has bad web_port '$web'; skipping." >&2; continue; }
     WEB_PORT["$inst"]="$web"
 done < "$CUSTOMERS"
 
 declare -A DOMAINS=()
+declare -A SEEN_DOMAIN=()
 while IFS=$'\t' read -r inst domain _rest; do
     [[ "$inst" =~ ^#.*$ || -z "$inst" ]] && continue
     [[ -z "${domain:-}" ]] && continue
+    # Domain lands verbatim in `server_name`: refuse shell/nginx metachars.
+    [[ "$domain" =~ ^[A-Za-z0-9]([A-Za-z0-9_.-]*[A-Za-z0-9])?$ ]] \
+        || { echo "Bad domain '$domain' for instance $inst; skipping." >&2; continue; }
+    if [[ -n "${SEEN_DOMAIN[$domain]:-}" && "${SEEN_DOMAIN[$domain]}" != "$inst" ]]; then
+        echo "Domain $domain claimed by ${SEEN_DOMAIN[$domain]} and $inst; keeping first." >&2
+        continue
+    fi
+    SEEN_DOMAIN["$domain"]="$inst"
     if [[ -z "${DOMAINS[$inst]:-}" ]]; then DOMAINS["$inst"]="$domain";
     else DOMAINS["$inst"]="${DOMAINS[$inst]} $domain"; fi
 done < "$REGISTRY"
@@ -47,6 +57,9 @@ for inst in "${!DOMAINS[@]}"; do
     web="${WEB_PORT[$inst]:-}"
     [[ -n "$web" ]] || { echo "Instance $inst has domains but no registry entry; skipping." >&2; continue; }
     names="${DOMAINS[$inst]}"
+    # Belt and braces (domains were validated above): keep server_name safe.
+    safe_names="$(printf '%s' "$names" | sed 's/[^A-Za-z0-9_.-]/_/g')"
+    [[ "$safe_names" == "$names" ]] || { echo "Instance $inst: sanitized names; skipping." >&2; continue; }
     # shellcheck disable=SC2001
     safe_inst="$(printf '%s' "$inst" | sed 's/[^A-Za-z0-9_-]/_/g')"
     out="${OUT_DIR}/sandpod-${safe_inst}.conf"
@@ -80,4 +93,25 @@ for inst in "${!DOMAINS[@]}"; do
     chmod 0644 "$out"
     echo "Wrote $out (${names} -> 127.0.0.1:${web})"
 done
+# SELinux: generated confs must keep the httpd config label (default policy
+# usually covers conf.d; restorecon is a no-op otherwise). Guarded, best-effort.
+if command -v getenforce >/dev/null 2>&1 && [[ "$(getenforce)" == "Enforcing" ]]; then
+    restorecon -F "${OUT_DIR}"/sandpod-*.conf 2>/dev/null || true
+fi
+# Stale configs: instances removed from the registry keep serving old ports.
+# Warn loudly; delete only when the operator passes --prune explicitly.
+if [[ "${1:-}" == "--prune" ]]; then
+    while IFS= read -r conf; do
+        id="${conf##*/sandpod-}"; id="${id%.conf}"
+        [[ -n "${DOMAINS[$id]:-}" || -n "${WEB_PORT[$id]:-}" ]] && continue
+        echo "Pruning stale $conf (instance $id not in registry)."
+        rm -f "$conf"
+    done < <(compgen -G "${OUT_DIR}/sandpod-*.conf" || true)
+else
+    while IFS= read -r conf; do
+        id="${conf##*/sandpod-}"; id="${id%.conf}"
+        [[ -n "${DOMAINS[$id]:-}" || -n "${WEB_PORT[$id]:-}" ]] && continue
+        echo "WARNING: stale $conf (instance $id not in registry; re-run with --prune to delete)." >&2
+    done < <(compgen -G "${OUT_DIR}/sandpod-*.conf" || true)
+fi
 echo "Next: $(dirname "$0")/reload-host-nginx.sh"

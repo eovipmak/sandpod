@@ -132,9 +132,16 @@ the image and recreating the container is required once to pick up the new
 
 PHP executables/configuration are mounted read-only from host runtime prefixes.
 After updating the host RPMs, send a graceful reload to the affected
-per-customer PHP-FPM master using the shared-runtime module's host helper.
+per-customer PHP-FPM master using the shared-runtime module's host helper
+(`shared-runtimes/scripts/reload-customer-php.sh`, fleet wrapper
+`monitoring-backup/scripts/rollout-php-patch.sh`; Node/Python likewise via
+`reload-customer-app.sh` / `rollout-app-patch.sh`).
 
-The pilot does not yet provide XFS project quotas, host Nginx integration,
-MariaDB connectivity, automated fleet-wide rollout/rollback, log rotation
-policy, or host Nginx/MariaDB wiring and fleet-wide rollout/rollback. Disk
-quota and data backup must be implemented before production use.
+Isolation, quota, proxy, DB, and backup mechanisms exist as prototype scripts
+(`customer-provisioning`, `host-storage` XFS projects soft 8G/hard 10G,
+`host-nginx` plain-HTTP reverse proxy, `host-mariadb` per-site DB/user +
+backup/restore, `monitoring-backup` tar + `resource-report --json`, `panel-api`
+Spec v4). Still missing before production: host Nginx/MariaDB wiring to real
+domains, fleet rollback (fix-forward re-run only), log-based alerting/paging,
+off-host backup retention (policy, ops/panel-owned), and E2E verification on a
+real host (deferred per `docs/plan.md` rule 2).

@@ -1,0 +1,10 @@
+# Regenerate host-nginx customer configs when the fleet registries change,
+# then reload nginx. Triggered by the .path unit below (no polling).
+[Unit]
+Description=SandPod regen + reload host nginx (registry changed)
+After=nginx.service
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/bin/sh -c '/opt/sandpod/repo/modules/host-nginx/scripts/generate-site-conf.sh && /opt/sandpod/repo/modules/host-nginx/scripts/reload-host-nginx.sh'

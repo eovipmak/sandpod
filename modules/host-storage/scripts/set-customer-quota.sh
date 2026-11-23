@@ -26,10 +26,16 @@ fi
 
 HOME_DIR="$(getent passwd "$SERVICE_USER" | cut -d: -f6)"
 PROJID="$(id -u "$SERVICE_USER")"
+# Never tag / or a non-/home path as an XFS project (would quota the rootfs).
+[[ -n "${HOME_DIR:-}" && "$HOME_DIR" != "/" && "$HOME_DIR" == /home/* ]] \
+    || { echo "Refusing: unexpected home '${HOME_DIR:-empty}' for ${SERVICE_USER}." >&2; exit 1; }
 [[ -d "$HOME_DIR" ]] || { echo "No home dir." >&2; exit 1; }
 
 # /etc/projid + /etc/projects registry (xfs_quota name resolution).
 touch /etc/projid /etc/projects
+if command -v getenforce >/dev/null 2>&1 && [[ "$(getenforce)" == "Enforcing" ]]; then
+    restorecon -F /etc/projid /etc/projects 2>/dev/null || true
+fi
 grep -qP "^${PROJID}:${SERVICE_USER}$" /etc/projid 2>/dev/null || {
     grep -vP "^(${PROJID}:|[^:]+:${SERVICE_USER}\$)" /etc/projid > /etc/projid.tmp || true
     printf '%s:%s\n' "$PROJID" "$SERVICE_USER" >> /etc/projid.tmp

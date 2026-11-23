@@ -76,8 +76,22 @@ if os.environ.get("SANDPOD_REQUIRE_AUTH") == "1":
 
 def require_auth(cred: HTTPAuthorizationCredentials | None = Depends(auth_scheme)):
     want = load_token()
+    strict = os.environ.get("SANDPOD_REQUIRE_AUTH") == "1"
     if not want:
+        # Fail-closed when the daemon was told to require auth (production):
+        # a missing/empty token file must deny, not serve open. Dev/fixture
+        # without the env keeps the old fail-open behaviour.
+        if strict:
+            raise HTTPException(status_code=500, detail={
+                "error": "token file missing (fail-closed)",
+                "exitCode": 1, "stderr": ""})
         return
+    # Fail-closed per request: a token file chmodded away from 0600 after
+    # boot must stop being honoured.
+    if strict and not token_file_mode_ok():
+        raise HTTPException(status_code=500, detail={
+            "error": "token file misconfigured (must be mode 0600)",
+            "exitCode": 1, "stderr": ""})
     if not cred or cred.scheme.lower() != "bearer" or cred.credentials != want:
         raise HTTPException(status_code=401, detail="unauthorized")
 
@@ -92,7 +106,9 @@ async def request_id_mw(request: Request, call_next):
     rid = request.headers.get("X-Request-ID") or uuid.uuid4().hex[:12]
     t0 = time.time()
     # Body-size cap (daemon self-protection; loopback-only so this is not a
-    # WAF/rate-limit substitute — see scope.md §3).
+    # WAF/rate-limit substitute — see scope.md §3). Header check is cheap;
+    # chunked bodies without a trustworthy length are read (Starlette caches
+    # the body, so downstream handlers still see it) and measured.
     try:
         cl = request.headers.get("content-length")
         if cl is not None and int(cl) > MAX_BODY_BYTES:
@@ -100,6 +116,14 @@ async def request_id_mw(request: Request, call_next):
                                 content={"error": "request body too large",
                                          "exitCode": 2, "stderr": "",
                                          "requestId": rid})
+        te = request.headers.get("transfer-encoding", "")
+        if "chunked" in te.lower() and cl is None:
+            body = await request.body()
+            if len(body) > MAX_BODY_BYTES:
+                return JSONResponse(status_code=413,
+                                    content={"error": "request body too large",
+                                             "exitCode": 2, "stderr": "",
+                                             "requestId": rid})
     except ValueError:
         pass
     try:
@@ -115,13 +139,24 @@ async def request_id_mw(request: Request, call_next):
     return resp
 
 
-def ensure_capacity():
-    """409 when too many async jobs are queued/running (fix-forward)."""
-    if not jobs.can_queue():
+def acquire_or_409(instance: str | None, busy_msg: str):
+    """Atomic cap + per-instance reservation. Raises 409 with Spec v4 shape.
+
+    'busy' -> instance already has a queued/running job; 'full' -> global
+    cap reached. On 'ok' the instance is reserved ("claimed"); the caller
+    must submit the job (submit overwrites with the jobId) without an
+    intervening await that could throw (submit itself releases on failure).
+    """
+    st = jobs.acquire(instance)
+    if st == "ok":
+        return
+    if st == "busy":
         raise HTTPException(status_code=409, detail={
-            "error": f"too many jobs running (cap {jobs._MAX_CONCURRENT}), "
-                     "retry after polling GET /v1/jobs",
-            "exitCode": 1, "stderr": ""})
+            "error": busy_msg, "exitCode": 1, "stderr": ""})
+    raise HTTPException(status_code=409, detail={
+        "error": f"too many jobs running (cap {jobs._MAX_CONCURRENT}), "
+                 "retry after polling GET /v1/jobs",
+        "exitCode": 1, "stderr": ""})
 
 
 # ---------- models (mirror openapi.yaml) ----------
@@ -182,14 +217,19 @@ class SshKeyRequest(BaseModel):
     @field_validator("publicKey")
     @classmethod
     def check_key(cls, v: str):
-        if v.startswith("ssh-") and len(v) < 4096 and "\n" not in v:
+        # Whitelist known key types + base64 payload (panel owns who gets
+        # access; API only rejects obvious garbage before exec → 422 shape
+        # error here, script stays authoritative).
+        if (len(v) < 4096 and "\n" not in v and re.match(
+                r"^ssh-(ed25519|rsa|ecdsa-sha2-nistp256|ecdsa-sha2-nistp384|"
+                r"ecdsa-sha2-nistp521|dss) [A-Za-z0-9+/=]+( .*)?$", v)):
             return v
         raise ValueError("bad publicKey")
 
 
 class DbRequest(BaseModel):
-    dbName: str = Field(pattern=r"^[A-Za-z0-9_]+$")
-    dbUser: str = Field(pattern=r"^[A-Za-z0-9_]+$")
+    dbName: str = Field(pattern=r"^[A-Za-z0-9_]+$", max_length=64)
+    dbUser: str = Field(pattern=r"^[A-Za-z0-9_]+$", max_length=64)
 
 
 class RolloutRequest(BaseModel):
@@ -246,6 +286,12 @@ def check_command(cmd: str) -> str:
     if "\n" in cmd:
         raise HTTPException(status_code=400, detail={
             "error": "command must be a single line", "exitCode": 2, "stderr": ""})
+    # Shell metachars are allowed on purpose: the command runs as `customer`
+    # inside the container (never as root on the host) and the panel may
+    # legitimately wrap it (e.g. `/bin/sh -l -c '...'`). Only bound length.
+    if len(cmd) > 8192:
+        raise HTTPException(status_code=400, detail={
+            "error": "command too long (max 8192)", "exitCode": 2, "stderr": ""})
     return cmd
 
 
@@ -299,7 +345,8 @@ def lookup(instance: str) -> dict:
     for c in get_customers():
         if c["instance"] == instance:
             return c
-    raise HTTPException(status_code=404, detail="unknown instance")
+    raise HTTPException(status_code=404, detail={
+        "error": "unknown instance", "exitCode": 2, "stderr": ""})
 
 
 def dry(cmd: list, request: Request):
@@ -318,6 +365,13 @@ def script_or_500(name: str, args: list, request: Request, dry_run: bool):
 
 def validate_provision(req: ProvisionRequest) -> str | None:
     """Mirror provision-customer.sh validation for fail-fast 400 (no queue)."""
+    if req.serviceUser is not None and str(req.serviceUser) != "":
+        if not re.match(r"^[a-z_][a-z0-9_-]*\$?$",
+                        str(req.serviceUser)):
+            return (f"invalid --service-user {req.serviceUser} "
+                    "(mirror lib.sh: lowercase, digits/_/-)")
+    if req.image is not None and str(req.image).strip() == "":
+        return "invalid --image (must be non-empty tag)"
     if req.cpus is not None:
         if not re.match(r"^[0-9]+(\.[0-9]+)?$", str(req.cpus)):
             return f"invalid --cpus {req.cpus} (e.g. 0.5, 1.0, 2)"
@@ -344,8 +398,8 @@ def validate_provision(req: ProvisionRequest) -> str | None:
             q = int(req.quotaGb)  # type: ignore[arg-type]
         except (TypeError, ValueError):
             return f"invalid --quota-gb {req.quotaGb}"
-        if q <= 0:
-            return f"invalid --quota-gb {req.quotaGb} (want >0)"
+        if not (1 <= q <= 1000):
+            return f"invalid --quota-gb {req.quotaGb} (want 1-1000)"
     for p, name in ((req.webPort, "web-port"), (req.sshPort, "ssh-port")):
         if p is not None:
             try:
@@ -387,11 +441,7 @@ def provision(req: ProvisionRequest, request: Request, dry_run: bool = False):
             args += [flag, str(val)]
     if dry_run:
         return {"dryRun": True, "cmd": build_cmd("provision", args)}
-    ensure_capacity()
-    if not jobs.try_acquire(req.instance):
-        raise HTTPException(status_code=409, detail={
-            "error": f"instance {req.instance} busy (job running)",
-            "exitCode": 1, "stderr": ""})
+    acquire_or_409(req.instance, f"instance {req.instance} busy (job running)")
     return Job(jobId=jobs.submit("provision", "provision", args,
                                  instance=req.instance),
                status="queued")
@@ -403,7 +453,8 @@ def remove_customer(iid: str, dry_run: bool = False,
                     delete_registry_entry: bool = False):
     """Query flags (DELETE-with-body is unreliable across clients)."""
     if not iid.isdigit() or len(iid) != 3:
-        raise HTTPException(status_code=400, detail="instance must be 3 digits")
+        raise HTTPException(status_code=400, detail={
+            "error": "instance must be 3 digits", "exitCode": 2, "stderr": ""})
     if delete_user and not delete_data:
         raise HTTPException(status_code=400, detail={
             "error": "--delete-user requires --delete-data (refused)",
@@ -417,11 +468,7 @@ def remove_customer(iid: str, dry_run: bool = False,
         args.append("--delete-registry-entry")
     if dry_run:
         return {"dryRun": True, "cmd": build_cmd("remove", args)}
-    ensure_capacity()
-    if not jobs.try_acquire(iid):
-        raise HTTPException(status_code=409, detail={
-            "error": f"instance {iid} busy (job running)",
-            "exitCode": 1, "stderr": ""})
+    acquire_or_409(iid, f"instance {iid} busy (job running)")
     return Job(jobId=jobs.submit("remove", "remove", args, instance=iid),
                status="queued")
 
@@ -436,7 +483,8 @@ def list_sites(iid: str):
     try:
         return json.loads(so or "{}")
     except ValueError:
-        raise HTTPException(status_code=500, detail="bad script JSON")
+        raise HTTPException(status_code=500, detail={
+            "error": "bad script JSON", "exitCode": 1, "stderr": ""})
 
 
 @app.post("/v1/customers/{iid}/sites", dependencies=[Depends(require_auth)])
@@ -553,12 +601,18 @@ def resources(iid: str):
     code, so, se = run_script("report", ["--registry",
                              os.environ.get("SANDPOD_REGISTRY", REGISTRY), "--json"])
     if code != 0:
-        raise HTTPException(status_code=exit_to_http(code), detail=se)
+        raise HTTPException(status_code=exit_to_http(code), detail={
+            "error": "report failed", "exitCode": code, "stderr": se})
     try:
         arr = json.loads(so or "[]")
     except ValueError:
-        raise HTTPException(status_code=500, detail="bad report JSON")
-    return next((r for r in arr if r.get("instance") == iid), {})
+        raise HTTPException(status_code=500, detail={
+            "error": "bad report JSON", "exitCode": 1, "stderr": ""})
+    hit = next((r for r in arr if r.get("instance") == iid), None)
+    if hit is None:
+        raise HTTPException(status_code=404, detail={
+            "error": "no report for instance", "exitCode": 1, "stderr": se})
+    return hit
 
 
 @app.post("/v1/customers/{iid}/ssh-keys", status_code=202,
@@ -569,19 +623,29 @@ def add_ssh_key(iid: str, req: SshKeyRequest, dry_run: bool = False):
     if dry_run:
         return {"dryRun": True,
                 "cmd": build_cmd("add_key", ["<user>", "<container>", "<pubkey-file>"])}
-    ensure_capacity()
-    if not jobs.try_acquire(f"ssh-{iid}"):
-        raise HTTPException(status_code=409, detail={
-            "error": f"instance {iid} busy (job running)",
-            "exitCode": 1, "stderr": ""})
+    acquire_or_409(f"ssh-{iid}", f"instance {iid} busy (job running)")
     c = lookup(iid)
-    with tempfile.NamedTemporaryFile("w", suffix=".pub", delete=False) as fh:
-        fh.write(req.publicKey + "\n")
-        kf = fh.name
-    return Job(jobId=jobs.submit("ssh-key", "add_key",
-                                 [c["serviceUser"], c["container"], kf],
-                                 instance=f"ssh-{iid}"),
-               status="queued")
+    kf = None
+    try:
+        with tempfile.NamedTemporaryFile("w", suffix=".pub", delete=False) as fh:
+            fh.write(req.publicKey + "\n")
+            kf = fh.name
+        return Job(jobId=jobs.submit("ssh-key", "add_key",
+                                     [c["serviceUser"], c["container"], kf],
+                                     instance=f"ssh-{iid}",
+                                     cleanup=[kf]),
+                   status="queued")
+    except Exception:
+        # No stale reservation or temp key on failure (no permanent 409,
+        # no /tmp/*.pub leak: the file is unlinked after the job finishes,
+        # or here if submit itself throws).
+        if kf is not None:
+            try:
+                os.unlink(kf)
+            except OSError:
+                pass
+        jobs.release(f"ssh-{iid}")
+        raise
 
 
 @app.post("/v1/customers/{iid}/backups", status_code=202,
@@ -590,11 +654,7 @@ def backup(iid: str, dry_run: bool = False):
     lookup(iid)
     if dry_run:
         return {"dryRun": True, "cmd": build_cmd("backup", [iid])}
-    ensure_capacity()
-    if not jobs.try_acquire(f"backup-{iid}"):
-        raise HTTPException(status_code=409, detail={
-            "error": f"backup for {iid} already running",
-            "exitCode": 1, "stderr": ""})
+    acquire_or_409(f"backup-{iid}", f"backup for {iid} already running")
     # backup-customer.sh prints the tar path on stdout (last line).
     return Job(jobId=jobs.submit("backup", "backup", [iid],
                                  instance=f"backup-{iid}"),
@@ -605,7 +665,7 @@ def backup(iid: str, dry_run: bool = False):
 def create_db(req: DbRequest, dry_run: bool = False):
     if dry_run:
         return {"dryRun": True, "cmd": build_cmd("mkdb", [req.dbName, req.dbUser])}
-    ensure_capacity()
+    acquire_or_409(None, "")
     # Creds are in job stdout EXACTLY once; in-memory only, never logged.
     # Panel must store them in its vault on first poll, then treat as secret.
     return Job(jobId=jobs.submit("mkdb", "mkdb", [req.dbName, req.dbUser]),
@@ -619,35 +679,34 @@ def reload_nginx(dry_run: bool = False):
     if dry_run:
         return {"dryRun": True,
                 "cmds": [build_cmd(n, a) for n, a in steps]}
-    ensure_capacity()
-    if not jobs.try_acquire("host-nginx"):
-        raise HTTPException(status_code=409, detail={
-            "error": "host-nginx reload already running",
-            "exitCode": 1, "stderr": ""})
+    acquire_or_409("host-nginx", "host-nginx reload already running")
     return Job(jobId=jobs.submit_chain("host-nginx", steps,
                                        instance="host-nginx"),
                status="queued")
 
 
 def _rollout(kind: str, req: RolloutRequest, dry_run: bool):
-    if req.batchSize is not None and int(req.batchSize) < 1:
+    try:
+        batch = int(req.batchSize) if req.batchSize is not None else 5
+        sleep_s = int(req.sleepSeconds) if req.sleepSeconds is not None else 10
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail={
+            "error": "batchSize/sleepSeconds must be integers",
+            "exitCode": 2, "stderr": ""})
+    if batch < 1:
         raise HTTPException(status_code=400, detail={
             "error": "batchSize must be >= 1", "exitCode": 2, "stderr": ""})
-    if req.sleepSeconds is not None and int(req.sleepSeconds) < 0:
+    if sleep_s < 0:
         raise HTTPException(status_code=400, detail={
             "error": "sleepSeconds must be >= 0", "exitCode": 2, "stderr": ""})
-    args = ["--batch-size", str(req.batchSize),
-            "--sleep-seconds", str(req.sleepSeconds)]
+    args = ["--batch-size", str(batch), "--sleep-seconds", str(sleep_s)]
     if req.skipUpdate:
         args.append("--skip-update")
     name = "rollout_php" if kind == "php" else "rollout_app"
     if dry_run:
         return {"dryRun": True, "cmd": build_cmd(name, args)}
-    ensure_capacity()
-    if not jobs.try_acquire("fleet"):
-        raise HTTPException(status_code=409, detail={
-            "error": "fleet rollout already running (fix forward, re-run after)",
-            "exitCode": 1, "stderr": ""})
+    acquire_or_409("fleet",
+                   "fleet rollout already running (fix forward, re-run after)")
     return Job(jobId=jobs.submit("rollout", name, args, instance="fleet",
                                  timeout=7200),
                status="queued")
@@ -673,11 +732,12 @@ def list_jobs():
 def get_job(jid: str):
     j = jobs.get(jid)
     if not j:
-        raise HTTPException(status_code=404, detail="unknown job")
+        raise HTTPException(status_code=404, detail={
+            "error": "unknown job", "exitCode": 2, "stderr": ""})
     return j
 
 
-@app.get("/openapi-sync-check")
+@app.get("/openapi-sync-check", dependencies=[Depends(require_auth)])
 def sync_check():
     """Dev hook: paths FastAPI serve vs openapi.yaml contract (debug only)."""
     served = sorted({r.path for r in app.routes if getattr(r, "path", "").startswith("/v1")})

@@ -1,0 +1,11 @@
+# Watch the panel-owned registries; any write regenerates + reloads nginx.
+# Install: cp systemd/* /etc/systemd/system/ && systemctl enable --now sandpod-nginx-regen.path
+[Unit]
+Description=SandPod watch fleet registries for nginx regen
+
+[Path]
+PathModified=/etc/sandpod/customers.tsv
+PathModified=/etc/sandpod/sites.tsv
+
+[Install]
+WantedBy=multi-user.target

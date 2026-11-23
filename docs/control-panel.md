@@ -141,10 +141,12 @@ Machine-readable contract: `modules/panel-api/openapi.yaml`. Quy tắc bất bi�
   stderr, không đổi thành lỗi.
 - Sync (<5s): `GET customers/sites/resources/health`, mọi site/port-app
   ops. Async (`202 + {jobId}`, poll `GET /v1/jobs/{id}`): provision,
-  remove, backup, DB create, host-nginx reload, rollout php/app.
+  remove, backup, DB create, ssh-key add, host-nginx reload, rollout php/app.
 - Không re-implement logic: mọi `POST/PATCH/DELETE` chỉ gọi đúng script
   trong bảng `plans/panel-api.md` §1 với cùng validation
   (`valid_domain/minor/port`, port-app `3000-3999` do panel cấp).
+  `DELETE` dùng query flags (`?delete_data/delete_user/delete_registry_entry/dry_run`),
+  không dùng body (tương thích client; `server.py` fallback đã đồng nhất query).
   `list-sites --json` và `resource-report --json` là shape trả về,
   panel không parse text.
 - Registry `customers.tsv`/`sites.tsv` vẫn là source-of-truth phía host;

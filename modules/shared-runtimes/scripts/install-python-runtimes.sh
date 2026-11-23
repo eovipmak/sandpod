@@ -42,6 +42,16 @@ while [[ $# -gt 0 ]]; do case "$1" in
   --uv-ver) UV_VER="${2:-}"; shift 2 ;;
   *) echo "Unknown arg: $1" >&2; exit 2 ;;
 esac; done
+# --prefix becomes rm -rf / restorecon targets: refuse system paths early.
+[[ "$PREFIX" == /* ]] || { echo "--prefix must be absolute." >&2; exit 2; }
+case "$PREFIX" in
+  /|/usr|/etc|/var|/home|/root|/boot|/proc|/sys|/dev|/run|/tmp|/bin|/sbin|/lib|/lib64)
+    echo "Refusing --prefix ${PREFIX} (system path)." >&2; exit 2 ;;
+esac
+for v in "$PY312_VER" "$PY313_VER" "$PY314_VER" "$UV_VER"; do
+    [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Bad version: $v (want X.Y.Z)." >&2; exit 2; }
+done
+[[ "$RELEASE_TAG" =~ ^[0-9]+$ ]] || { echo "Bad --release-tag: $RELEASE_TAG." >&2; exit 2; }
 
 need() { command -v "$1" >/dev/null 2>&1 || { echo "Missing required tool: $1" >&2; exit 1; }; }
 
@@ -121,10 +131,15 @@ tarball_install_one() {
     trap 'rm -rf "$tmp"' RETURN
     echo "Fetching CPython ${ver} -> ${dest} ..."
     curl -fsSL "$url" -o "${tmp}/python.tar.gz"
-    rm -rf "$dest"
-    mkdir -p "$dest"
     # install_only tarballs unpack to ./python/... - move contents up.
     tar -xzf "${tmp}/python.tar.gz" -C "$tmp"
+    # Verify the fresh tree BEFORE touching the live one (a failed
+    # download/extract must never delete the running runtime).
+    fresh="${tmp}/python/bin/python${minor}"
+    [[ -x "$fresh" ]] || { echo "ERROR: extracted tree missing bin/python${minor}." >&2; exit 1; }
+    "$fresh" --version >/dev/null || { echo "ERROR: fresh python ${ver} does not run." >&2; exit 1; }
+    rm -rf "$dest"
+    mkdir -p "$dest"
     cp -a "${tmp}/python/." "$dest/"
     rm -rf "$tmp"
     trap - RETURN

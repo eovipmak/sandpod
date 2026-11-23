@@ -19,9 +19,11 @@ import threading
 import time
 import uuid
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+# Daemon self-protection (same rationale as app.py MAX_BODY_BYTES).
+MAX_BODY_BYTES = int(os.environ.get("SANDPOD_MAX_BODY_BYTES", "1048576"))
 SCRIPT = {
     "provision": "customer-provisioning/scripts/provision-customer.sh",
     "remove": "customer-provisioning/scripts/remove-customer.sh",
@@ -160,12 +162,32 @@ class Handler(BaseHTTPRequestHandler):
             n = int(self.headers.get("Content-Length", 0))
         except ValueError:
             n = 0
+        if n > MAX_BODY_BYTES:
+            return {"_too_large": True}
         if not n:
             return {}
         try:
-            return json.loads(self.rfile.read(n) or b"{}")
-        except (ValueError, OSError):
-            return {}
+            raw = self.rfile.read(min(n, MAX_BODY_BYTES + 1))
+        except OSError:
+            return {"_bad_json": True}
+        if len(raw) > MAX_BODY_BYTES:
+            return {"_too_large": True}
+        try:
+            return json.loads(raw or b"{}")
+        except ValueError:
+            return {"_bad_json": True}
+
+    def _bad_body(self, data):
+        """413/400 for oversize/unparseable JSON bodies (fail-fast)."""
+        if data.get("_too_large"):
+            self._send(413, {"error": "request body too large",
+                             "exitCode": 2, "stderr": ""})
+            return True
+        if data.get("_bad_json"):
+            self._send(400, {"error": "malformed JSON body",
+                             "exitCode": 2, "stderr": ""})
+            return True
+        return False
 
     def do_GET(self):
         if not self._auth_ok():
@@ -228,6 +250,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         u = urlparse(self.path)
         data = self._body()
+        if self._bad_body(data):
+            return
         if u.path == "/v1/customers":
             inst = str(data.get("instance", ""))
             if not re.match(r"^[0-9]{3}$", inst):
@@ -318,7 +342,7 @@ class Handler(BaseHTTPRequestHandler):
                 jid = submit_job("ssh-key", "add_key", [c["serviceUser"], c["container"], kf])
             self._send(202, {"jobId": jid, "status": "queued", "exitCode": None, "stdout": "", "stderr": ""})
             return
-        if u.path == "/dbs":
+        if u.path == "/v1/dbs":
             if not re.match(r"^[A-Za-z0-9_]+$", str(data.get("dbName", ""))) or \
                not re.match(r"^[A-Za-z0-9_]+$", str(data.get("dbUser", ""))):
                 self._send(400, {"error": "dbName/dbUser must be [A-Za-z0-9_]", "exitCode": 2, "stderr": ""})
@@ -326,15 +350,16 @@ class Handler(BaseHTTPRequestHandler):
             jid = submit_job("mkdb", "mkdb", [data["dbName"], data["dbUser"]])
             self._send(202, {"jobId": jid, "status": "queued", "exitCode": None, "stdout": "", "stderr": ""})
             return
-        if u.path in ("/rollouts/php", "/rollouts/app"):
+        if u.path in ("/v1/rollouts/php", "/v1/rollouts/app"):
             args = ["--batch-size", str(data.get("batchSize", 5)),
                     "--sleep-seconds", str(data.get("sleepSeconds", 10))]
             if data.get("skipUpdate"):
                 args.append("--skip-update")
-            jid = submit_job("rollout", "rollout_php" if u.path.endswith("/php") else "rollout_app", args)
+            jid = submit_job("rollout", "rollout_php" if u.path.endswith("/php") else "rollout_app", args,
+                             timeout=7200)
             self._send(202, {"jobId": jid, "status": "queued", "exitCode": None, "stdout": "", "stderr": ""})
             return
-        if u.path == "/host-nginx/reload":
+        if u.path == "/v1/host-nginx/reload":
             jid = submit_job("nginx", "reload_nginx", [])
             self._send(202, {"jobId": jid, "status": "queued", "exitCode": None, "stdout": "", "stderr": ""})
             return
@@ -353,6 +378,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, {"error": "unknown instance"})
             return
         data = self._body()
+        if self._bad_body(data):
+            return
         domain = m.group(2).lower()
         if data.get("php") not in ("8.2", "8.3", "8.4", "8.5", "8.6"):
             self._send(400, {"error": "php must be 8.2-8.6", "exitCode": 2, "stderr": ""})
@@ -369,13 +396,13 @@ class Handler(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         m = re.match(r"^/v1/customers/([0-9]{3})$", u.path)
         if m:
-            data = self._body()
+            q = parse_qs(u.query)
             args = [m.group(1)]
-            if data.get("deleteData"):
+            if q.get("delete_data", ["false"])[0].lower() == "true":
                 args.append("--delete-data")
-            if data.get("deleteUser"):
+            if q.get("delete_user", ["false"])[0].lower() == "true":
                 args.append("--delete-user")
-            if data.get("deleteRegistryEntry"):
+            if q.get("delete_registry_entry", ["false"])[0].lower() == "true":
                 args.append("--delete-registry-entry")
             jid = submit_job("remove", "remove", args)
             self._send(202, {"jobId": jid, "status": "queued", "exitCode": None, "stdout": "", "stderr": ""})
@@ -386,10 +413,10 @@ class Handler(BaseHTTPRequestHandler):
             if not c:
                 self._send(404, {"error": "unknown instance"})
                 return
-            data = self._body()
+            q = parse_qs(u.query)
             name = "remove_site" if m.group(2) == "sites" else "remove_port"
             args = [c["serviceUser"], c["container"], m.group(3).lower()]
-            if data.get("deleteData"):
+            if q.get("delete_data", ["false"])[0].lower() == "true":
                 args.append("--delete-data")
             code, so, se = run_script(name, args)
             self._send(exit_to_http(code) if code else 200,

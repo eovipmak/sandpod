@@ -46,6 +46,7 @@ Host services and customer workloads have separate lifecycles:
 | `customer-apps` | Per-site mechanism (nginx maps, PHP version, data dirs) for the panel | Prototype scripts |
 | `host-storage` | XFS project quotas per customer (soft 8G / hard 10G) | Enforcing |
 | `monitoring-backup` | Resource monitoring, logs, and backup orchestration | Prototype scripts |
+| `panel-api` | FastAPI daemon wrapping scripts for the panel (Spec v4, `openapi.yaml`): as root, loopback-only `127.0.0.1:8741`, Bearer token file `0600`, sync (<5s) + async (`202`+`jobId`) | Prototype |
 
 ## Runtime selection
 

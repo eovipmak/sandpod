@@ -1,0 +1,25 @@
+# Fleet systemd templates (operator installs on host; repo owns the templates).
+#
+# Layout convention (same as sandpod-panel-api.service): the repo is checked
+# out at /opt/sandpod/repo (symlink to any checkout works). Units below call
+# repo scripts by absolute path so they never depend on $PATH or CWD.
+#
+# Install (host, as root):
+#   cp modules/monitoring-backup/systemd/* /etc/systemd/system/
+#   systemctl daemon-reload
+#   systemctl enable --now sandpod-backup@001.timer        # per customer
+#   systemctl enable --now sandpod-resource-report.timer   # fleet report
+#
+# Design notes (scope.md §3: retention/off-host/paging are ops/panel policy):
+# - Timers only RUN the mechanism (tar/report). Retention count stays in the
+#   scripts (--keep); off-host sync and paging stay outside this repo.
+# - Report output goes to the journal (JSON); the panel scrapes
+#   `journalctl -u sandpod-resource-report` or calls the API instead.
+[Unit]
+Description=SandPod per-customer backup (tar data+config, instance %i)
+After=network.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/opt/sandpod/repo/modules/monitoring-backup/scripts/backup-customer.sh %i

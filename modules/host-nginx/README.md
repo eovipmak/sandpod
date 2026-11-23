@@ -15,8 +15,10 @@ generated template) so apps can trust the original scheme.
 ## Layout
 
 * `config/sites/customer-002.conf.example` - generated file example.
-* `scripts/generate-site-conf.sh` - registry + domain map -> `/etc/nginx/conf.d/sandpod-<id>.conf`.
+* `config/sandpod-logrotate.conf` - logrotate for `sandpod-*.log` (14 days) → `/etc/logrotate.d/sandpod`.
+* `scripts/generate-site-conf.sh` - registry + domain map -> `/etc/nginx/conf.d/sandpod-<id>.conf` (validates domains/ports, warns duplicates + stale; `--prune` deletes stale).
 * `scripts/reload-host-nginx.sh` - `nginx -t && systemctl reload nginx`.
+* `systemd/sandpod-nginx-regen.{path,service}` - auto-regen + reload when `/etc/sandpod/*.tsv` change (`cp systemd/* /etc/systemd/system/ && systemctl enable --now sandpod-nginx-regen.path`).
 
 ## Inputs (policy lives outside this repo)
 

@@ -36,6 +36,15 @@ while [[ $# -gt 0 ]]; do case "$1" in
   --fnm-ver) FNM_VER="${2:-}"; shift 2 ;;
   *) echo "Unknown arg: $1" >&2; exit 2 ;;
 esac; done
+# --prefix becomes rm -rf / restorecon targets: refuse system paths early.
+[[ "$PREFIX" == /* ]] || { echo "--prefix must be absolute." >&2; exit 2; }
+case "$PREFIX" in
+  /|/usr|/etc|/var|/home|/root|/boot|/proc|/sys|/dev|/run|/tmp|/bin|/sbin|/lib|/lib64)
+    echo "Refusing --prefix ${PREFIX} (system path)." >&2; exit 2 ;;
+esac
+for v in "$NODE22_VER" "$NODE24_VER" "$NODE26_VER" "$FNM_VER"; do
+    [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Bad version: $v (want X.Y.Z)." >&2; exit 2; }
+done
 
 need() { command -v "$1" >/dev/null 2>&1 || { echo "Missing required tool: $1" >&2; exit 1; }; }
 
@@ -125,9 +134,14 @@ tarball_install_one() {
     trap 'rm -rf "$tmp"' RETURN
     echo "Fetching node v${ver} -> ${dest} ..."
     curl -fsSL "$url" -o "${tmp}/node.tar.xz"
+    tar -xJf "${tmp}/node.tar.xz" -C "$tmp"
+    # Verify the fresh tree BEFORE touching the live one (a failed
+    # download/extract must never delete the running runtime).
+    fresh="${tmp}/node-v${ver}-linux-x64/bin/node"
+    [[ -x "$fresh" ]] || { echo "ERROR: extracted tree missing bin/node." >&2; exit 1; }
+    "$fresh" --version >/dev/null || { echo "ERROR: fresh node v${ver} does not run." >&2; exit 1; }
     rm -rf "$dest"
     mkdir -p "$dest"
-    tar -xJf "${tmp}/node.tar.xz" -C "$tmp"
     cp -a "${tmp}/node-v${ver}-linux-x64/." "$dest/"
     rm -rf "$tmp"
     trap - RETURN

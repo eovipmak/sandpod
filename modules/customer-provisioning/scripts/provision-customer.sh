@@ -74,6 +74,11 @@ fi
 
 [[ -z "$SERVICE_USER" ]] && SERVICE_USER="svc-c${INSTANCE}"
 [[ "$SERVICE_USER" =~ ^[a-z_][a-z0-9_-]*[$]?$ ]] || { echo "Invalid service user." >&2; exit 2; }
+# Fail fast (exit 2) before creating any user/units: image tag is written
+# verbatim into the Quadlet drop-in, quota/inodes gate step 8.
+[[ "$IMAGE" =~ ^[A-Za-z0-9][A-Za-z0-9_./:@-]*$ ]] || { echo "Invalid --image tag." >&2; exit 2; }
+[[ "$QUOTA_GB" =~ ^[0-9]+$ && "$QUOTA_GB" -gt 0 ]] || { echo "Invalid --quota-gb (positive integer)." >&2; exit 2; }
+[[ "$HARD_INODES" =~ ^[0-9]+$ && "$SOFT_INODES" =~ ^[0-9]+$ ]] || { echo "Inode limits must be counts (0 = unset)." >&2; exit 2; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MODULE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -303,14 +308,17 @@ ensure_image() {
                 podman image exists "$IMAGE" >/dev/null 2>&1; then continue; fi
         echo "Transferring ${IMAGE} from ${donor} to ${SERVICE_USER} ..."
         tmp_tar="$(mktemp /var/tmp/sandpod-image-${INSTANCE}-XXXXXX.tar)"
+        # World-readable image layers are unnecessary exposure; the transfer
+        # runs between two local service accounts only.
         chown "${donor}:${donor}" "$tmp_tar"
-        chmod 0644 "$tmp_tar"
+        chmod 0600 "$tmp_tar"
+        trap 'rm -f "$tmp_tar"' RETURN
         runuser -u "$donor" -- env HOME="$donor_home" \
             XDG_RUNTIME_DIR="/run/user/${donor_uid}" \
             podman save -o "$tmp_tar" "$IMAGE"
-        chmod 0644 "$tmp_tar"
         user_podman load -i "$tmp_tar"
         rm -f "$tmp_tar"
+        trap - RETURN
         return 0
     done
     echo "WARNING: image ${IMAGE} not found locally; unit start will try to pull it." >&2
@@ -329,6 +337,11 @@ else
 fi
 
 # 6. SSH key injection (container's /home/customer is ephemeral, so install after start).
+if [[ -n "$SSH_KEY" && "$SKIP_START" -eq 1 ]]; then
+    # Surface loudly (stderr WARNING -> panel warnings[]): the key is NOT
+    # installed when the unit never starts; re-run add-ssh-key.sh afterwards.
+    echo "WARNING: --ssh-key ignored with --skip-start; run add-ssh-key.sh after starting." >&2
+fi
 if [[ -n "$SSH_KEY" && "$SKIP_START" -eq 0 ]]; then
     "${SCRIPT_DIR}/add-ssh-key.sh" "$SERVICE_USER" "$CONTAINER" "$SSH_KEY"
 fi
@@ -352,6 +365,8 @@ fi
     while printf '%s\n' "$OTHERS" | grep -qP "\t${SSH_PORT}\t"; do SSH_PORT=$((SSH_PORT+1)); done
     # The unit drop-in was written before the lock; refresh it if the
     # locked re-validation bumped a port so unit and registry stay in sync.
+    _oldw="$(grep -oP 'PublishPort=127\.0\.0\.1:\K[0-9]+(?=:80)' "${DROPIN_DIR}/10-instance.conf" 2>/dev/null | head -1 || true)"
+    _olds="$(grep -oP 'PublishPort=127\.0\.0\.1:\K[0-9]+(?=:22)' "${DROPIN_DIR}/10-instance.conf" 2>/dev/null | head -1 || true)"
     cat > "${DROPIN_DIR}/10-instance.conf" <<EOF
 [Container]
 Image=${IMAGE}
@@ -360,6 +375,20 @@ PublishPort=127.0.0.1:${SSH_PORT}:22
 EOF
     chown "$SERVICE_USER:$SERVICE_USER" "${DROPIN_DIR}/10-instance.conf"
     chmod 0644 "${DROPIN_DIR}/10-instance.conf"
+    # If the lock bumped a port after step 5 already (re)started the unit,
+    # the running unit still publishes the old ports: reload + restart so
+    # the live unit matches the file and the registry below.
+    if [[ "${_oldw:-}${_olds:-}" != "${WEB_PORT}${SSH_PORT}" && "$SKIP_START" -eq 0 ]]; then
+        echo "Ports bumped under lock (${_oldw:-?}/${_olds:-?} -> ${WEB_PORT}/${SSH_PORT}); restarting unit ..." >&2
+        runuser -u "$SERVICE_USER" -- env HOME="$HOME_DIR" \
+            XDG_RUNTIME_DIR="/run/user/${UID_NUM}" \
+            DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/${UID_NUM}/bus" \
+            systemctl --user daemon-reload
+        runuser -u "$SERVICE_USER" -- env HOME="$HOME_DIR" \
+            XDG_RUNTIME_DIR="/run/user/${UID_NUM}" \
+            DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/${UID_NUM}/bus" \
+            systemctl --user restart "customer@${INSTANCE}.service"
+    fi
     printf '%s\n' "$OTHERS" > "${REGISTRY}.tmp"
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$INSTANCE" "$SERVICE_USER" "$CONTAINER" "$WEB_PORT" "$SSH_PORT" "$IMAGE" >> "${REGISTRY}.tmp"
     mv "${REGISTRY}.tmp" "$REGISTRY"

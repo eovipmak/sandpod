@@ -1,0 +1,12 @@
+# Nightly per-DB dump (see .service). Randomized so N site DBs
+# don't hit mariadb at the same minute.
+[Unit]
+Description=SandPod nightly dump for site database %i
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=3600
+Persistent=true
+
+[Install]
+WantedBy=timers.target

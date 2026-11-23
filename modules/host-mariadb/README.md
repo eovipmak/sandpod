@@ -7,20 +7,25 @@ never get `SUPER`/`ALL PRIVILEGES`.
 ## Container connectivity
 
 Inside a rootless (pasta) container, `127.0.0.1` is the container itself.
-Containers reach the host DB via **`host.containers.internal`**. Host side:
+Containers reach the host DB via **`host.containers.internal`**. Host side —
+template `config/sandpod.cnf` (install: `cp config/sandpod.cnf /etc/my.cnf.d/`
++ `systemctl restart mariadb`; add the pasta gateway IP to `bind-address`):
 
-```ini
-# /etc/my.cnf.d/sandpod.cnf
-[mariadbd]
-bind-address = 127.0.0.1,::1
-# plus the pasta gateway reachable from customer netns (verify with
-# podman exec customer-001 getent hosts host.containers.internal).
+```sh
+podman exec customer-001 getent hosts host.containers.internal  # find gateway
 ```
 
-Create a host firewall opening for the customer subnet only, never `0.0.0.0/0`
-for 3306. Users are created as `'user'@'%'` so the container netns IP is
+Firewall (operator, on host — example for firewalld; never `0.0.0.0/0`):
+
+```sh
+sudo firewall-cmd --permanent --add-rich-rule='rule family=ipv4 source address=<pasta-subnet> port port=3306 protocol=tcp accept'
+sudo firewall-cmd --reload
+```
+
+Users are created as `'user'@'%'` so the container netns IP is
 accepted; tighten to the pasta subnet once it is pinned down in this
-environment.
+environment. `REQUIRE SSL` stays off until the panel owns cert distribution
+(out of scope here).
 
 ## Scripts (run as root)
 
@@ -39,8 +44,16 @@ DROP/INDEX/ALTER/...`). No cross-site access by construction.
 ## Backup policy (minimum before production)
 
 * Nightly `backup-site-db.sh` per site + `tar` of `~/data` + `~/config`
-  (see future `monitoring-backup`); retain 7 daily + 4 weekly, test-restore monthly.
-* Dumps go to `/var/backups/sandpod` (`0700`); sync off-host.
+  (see `monitoring-backup/systemd/`); retain 7 daily + 4 weekly, test-restore monthly.
+  Schedule per DB (names are panel-owned):
+  ```sh
+  sudo cp modules/host-mariadb/systemd/* /etc/systemd/system/
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now 'sandpod-db-backup@shop_db.timer'
+  ```
+* Dumps go to `/var/backups/sandpod` (`0700`, integrity-checked with
+  `gzip -t`); `restore-site-db.sh` validates the dump, backs up the live DB
+  first, and creates a missing DB. Sync off-host.
 
 ## Status
 

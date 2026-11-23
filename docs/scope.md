@@ -31,6 +31,7 @@ cho ai, giá tiền, ai được SSH vào đâu, giữ backup bao lâu — thu�
 | Reverse-proxy **HTTP thuần** ra loopback ports + handoff `X-Forwarded-Proto` | `host-nginx` |
 | MariaDB share: DB/user per-site + backup/restore scripts (cơ chế) | `host-mariadb` |
 | Backup local: tar `data/config` + dump DB (cơ chế; retention/off-host là policy ngoài) | `monitoring-backup` + `host-mariadb` |
+| Daemon HTTP bọc scripts cho panel (`openapi.yaml`, Spec v4; không re-implement logic) | `panel-api` |
 
 ## 3. OUT OF SCOPE — kèm owner
 
@@ -42,8 +43,8 @@ cho ai, giá tiền, ai được SSH vào đâu, giữ backup bao lâu — thu�
 | Panel UI/API/billing, end-user auth, source of truth phân bổ (DB ports...) | control panel | Repo chỉ định schema TSV, panel giữ policy |
 | Nội dung site, app code, domain của khách, chính sách ai được SSH | khách / panel | Repo chỉ cấp cơ chế inject key |
 | WAF, rate limit, cache per-site, HTTP/3, chống DDoS | edge team | |
-| Retention/off-host backup, alerting/paging policy | ops / panel | Repo chỉ xuất dữ liệu (`resource-report --json`) |
-| Hardening OS host ngoài phạm vi isolation | host admin | |
+| Retention/off-host backup, alerting/paging policy | ops / panel | Repo chỉ xuất dữ liệu (`resource-report --json`); timer templates trong repo chỉ chạy cơ chế, không page |
+| Hardening OS host ngoài phạm vi isolation | host admin | Ngoại lệ: daemon `panel-api` tự bảo vệ tài nguyên nó giữ (cap job/body/timeout, token `0600`, systemd hardening) — mechanism cùng host, không phải policy per-site/DDoS (thuộc edge) |
 
 ## 4. Scope test — mọi đề xuất tương lai phải trả lời trước khi vào plan
 

@@ -6,7 +6,9 @@ set -euo pipefail
 
 PORT="${1:-}"
 BASE="${2:-127.0.0.1}"
-[[ "$PORT" =~ ^[0-9]+$ ]] || { echo "Usage: $0 <web-port> [base-host]" >&2; exit 2; }
+[[ "$PORT" =~ ^[0-9]+$ && "$PORT" -ge 1 && "$PORT" -le 65535 ]] \
+    || { echo "Usage: $0 <web-port 1-65535> [base-host]" >&2; exit 2; }
+command -v curl >/dev/null 2>&1 || { echo "Missing curl." >&2; exit 1; }
 
 fail=0
 BODY="$(mktemp /tmp/sandpod-hc-body-XXXXXX)"
@@ -14,7 +16,7 @@ trap 'rm -f "$BODY"' EXIT
 check() {
     local host="$1" path="$2" expect_version="$3"
     local code body
-    code="$(curl -s -o "$BODY" -w '%{http_code}' -H "Host: ${host}" "http://${BASE}:${PORT}${path}" || echo 000)"
+    code="$(curl -s --max-time 10 -o "$BODY" -w '%{http_code}' -H "Host: ${host}" "http://${BASE}:${PORT}${path}" || echo 000)"
     body="$(cat "$BODY" 2>/dev/null || true)"
     if [[ "$code" == "200" ]]; then
         if [[ -n "$expect_version" && "$body" != *"$expect_version"* ]]; then

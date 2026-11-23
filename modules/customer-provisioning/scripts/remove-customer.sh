@@ -26,6 +26,9 @@ done
 [[ "${EUID}" -eq 0 ]] || { echo "Run as root." >&2; exit 1; }
 id "$SERVICE_USER" >/dev/null 2>&1 || { echo "User ${SERVICE_USER} not found." >&2; exit 1; }
 HOME_DIR="$(getent passwd "$SERVICE_USER" | cut -d: -f6)"
+# Catastrophic-rm guard: never operate on empty, /, or non-/home paths.
+[[ -n "${HOME_DIR:-}" && "$HOME_DIR" != "/" && "$HOME_DIR" == /home/* ]] \
+    || { echo "Refusing: unexpected home '${HOME_DIR:-empty}' for ${SERVICE_USER}." >&2; exit 1; }
 UID_NUM="$(id -u "$SERVICE_USER")"
 
 user_systemctl() {

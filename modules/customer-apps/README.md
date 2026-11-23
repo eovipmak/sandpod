@@ -53,7 +53,7 @@ reloads both services; re-add via `add-site.sh` to convert back to PHP.
 
 * Map values: `site_root` is `/srv/customer/<domain>` (or `public_html`
   for `--primary`); backend is the fixed FPM listener for the minor
-  (8.2→`9082`, 8.3→`9000`, 8.4→`9084`, 8.5→`9085`).
+  (8.2→`9082`, 8.3→`9000`, 8.4→`9084`, 8.5→`9085`, 8.6→`9086`).
 * Port apps: one loopback port per app from `3000-3999`, allocated by the
   panel (scripts validate, never invent). The app itself must listen on
   `127.0.0.1:<port>`; only the container's Nginx (port 80) is reachable
