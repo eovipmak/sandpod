@@ -9,7 +9,8 @@ unprivileged host account per customer, rootless Quadlet units, `~/data` +
 * `../customer-container/quadlet/customer@.container` - unit template (copied).
 * `../customer-container/config/nginx.conf` - seed for `~/config/nginx.conf`.
 * `../customer-container/config/default-index.html` + `examples/pilot-site/index.php` - seed `public_html/`.
-* Image `localhost/sandpod/customer-runtime:pilot` built beforehand.
+* Image `localhost/sandpod/customer-runtime:node-shared` built beforehand
+  (pilot `001` stays pinned to `:pilot` in its drop-in/registry entry).
 
 ## Scripts (run as root)
 

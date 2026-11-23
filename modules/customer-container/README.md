@@ -44,8 +44,11 @@ run. EPEL remains enabled inside the image for tools such as `htop`.
 Build the image **as the rootless service account**, from this directory:
 
 ```sh
-podman build -t localhost/sandpod/customer-runtime:pilot .
+podman build -t localhost/sandpod/customer-runtime:node-shared .
 ```
+
+Existing pilot `001` stays on the `:pilot` tag (pinned per-instance in its
+drop-in/registry entry); new customers default to `:node-shared`.
 
 Before starting the image, build a current shared PHP runtime for each minor
 version listed in the runtime matrix; see the [shared-runtime guide](../shared-runtimes/README.md).

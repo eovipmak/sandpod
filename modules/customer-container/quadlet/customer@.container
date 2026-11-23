@@ -3,7 +3,7 @@ Description=Rootless customer container %i
 After=network-online.target
 
 [Container]
-Image=localhost/sandpod/customer-runtime:pilot
+Image=localhost/sandpod/customer-runtime:node-shared
 ContainerName=customer-%i
 Volume=%h/data:/srv/customer:Z
 Volume=%h/config:/etc/sandpod-config:ro,Z

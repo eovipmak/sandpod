@@ -117,7 +117,9 @@ Shared Node.js / Python runtimes. Everything in Spec v2 stays unchanged.
     keep the same layout.
 - Extra mounts (read-only, host → container, same paths):
   `/opt/sandpod/node` and `/opt/sandpod/python`. Old `pilot` images
-  work without them (image RPM fallback); new images require them.
+  work without them (image RPM fallback); new images use them when present
+  and fall back to the image RPMs when absent (same fallback, see E2E in
+  `plans/container-image.md`).
 - Panel port-app commands should prefer the absolute shared paths
   (`/opt/sandpod/node/<major>/bin/node`,
   `/opt/sandpod/python/<ver>/bin/python3.<minor>`) and fall back to

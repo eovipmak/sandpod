@@ -29,7 +29,22 @@ sudo modules/host-storage/scripts/quota-report.sh
 
 `provision-customer.sh` accepts `--quota-gb N` (default 10) and applies the
 hard limit with soft = 80% right after start; while accounting is off it warns
-and the limits are applied on the next provision/re-run after the reboot.
+and the limits are applied automatically at boot after the reboot
+(`systemd/sandpod-quotas.service` re-runs `reapply-quotas.sh` for every
+registry customer with default 10/8G). Custom `--quota-gb` values are not
+stored in the registry: re-run `set-customer-quota.sh` manually for those
+accounts after the first pquota reboot.
+
+## Boot re-apply (new installs + existing accounts)
+
+Tags persist in the filesystem, but `limit -p` only sticks while `/` has
+accounting. Install once so existing customers regain limits after reboot:
+
+```sh
+sudo cp modules/host-storage/systemd/* /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now sandpod-quotas.service
+```
 
 ## Conventions
 
@@ -45,6 +60,7 @@ and the limits are applied on the next provision/re-run after the reboot.
 
 ## Status
 
-Enforcing on this host (`/` mounted `prjquota`, accounting + enforcement ON).
+Enforcing once `/` is mounted `pquota`/`prjquota` (see Activate above).
 `set-customer-quota.sh` tags + limits in one run; provision applies it
-automatically via `--quota-gb`.
+automatically via `--quota-gb`; `systemd/sandpod-quotas.service` re-applies
+limits for all registry customers at boot.

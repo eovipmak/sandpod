@@ -15,8 +15,10 @@ Small infra repo (no app code, tests, CI, lint, or package manager). Source of t
 Build image **as the rootless service account**, from `modules/customer-container/`:
 
 ```sh
-podman build -t localhost/sandpod/customer-runtime:pilot .
+podman build -t localhost/sandpod/customer-runtime:node-shared .
 ```
+
+Pilot `001` stays pinned to `:pilot`; new customers default to `:node-shared`.
 
 Per customer: dedicated unprivileged host account with own Podman storage + lingering user manager. Automated by `customer-provisioning/scripts/provision-customer.sh` (manual equivalent: install template + instance symlink (`customer@001.container`) + `.container.d/` drop-in under `~/.config/containers/systemd/`, create `~/data` + `~/config`, copy `config/nginx.conf` → `~/config/nginx.conf`, then:
 

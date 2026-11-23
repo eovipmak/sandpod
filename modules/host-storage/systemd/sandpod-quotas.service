@@ -1,0 +1,25 @@
+# SandPod XFS quota re-apply (host, as root).
+#
+# Tags persist in the filesystem, but `limit -p` only sticks while /
+# is mounted with pquota. After the first pquota reboot every existing
+# customer needs limits re-applied once; this unit does that at boot.
+# Custom per-customer --quota-gb values are NOT in the registry, so they
+# are restored with defaults here - re-run set-customer-quota.sh manually
+# for customized accounts.
+#
+# Install:
+#   cp modules/host-storage/systemd/* /etc/systemd/system/
+#   systemctl daemon-reload
+#   systemctl enable --now sandpod-quotas.service
+[Unit]
+Description=SandPod re-apply XFS project quotas (post-boot)
+After=local-fs.target
+ConditionPathExists=/etc/sandpod/customers.tsv
+
+[Service]
+Type=oneshot
+ExecStart=/opt/sandpod/repo/modules/host-storage/scripts/reapply-quotas.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

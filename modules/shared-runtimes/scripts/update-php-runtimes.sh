@@ -11,8 +11,11 @@ dnf upgrade -y \
     'php83-*' \
     'php84-*' \
     'php85-*' \
-    'php86-*' \
     oniguruma5php
+
+# Optional like the installer: no php86 on hosts installed before Remi
+# published it must not fail the fleet patch rollout.
+dnf upgrade -y 'php86-*' || echo "WARNING: php86-* not available; 8.2-8.5 updated." >&2
 
 if command -v getenforce >/dev/null && [[ "$(getenforce)" == "Enforcing" ]]; then
     restorecon -RF /opt/remi /etc/opt/remi /usr/lib64/libonig.so.105

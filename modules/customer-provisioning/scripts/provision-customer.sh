@@ -6,7 +6,7 @@
 # Usage:
 #   provision-customer.sh <instance-id> [--service-user svc-c002] [--web-port 18002]
 #     [--ssh-port 22202] [--ssh-key /path/to/id_rsa.pub]
-#     [--image localhost/sandpod/customer-runtime:pilot] [--image-tar /tmp/img.tar]
+#     [--image localhost/sandpod/customer-runtime:node-shared] [--image-tar /tmp/img.tar]
 #     [--image-source-user svc-c001] [--skip-image-transfer] [--quota-gb 10]
 #     [--hard-inodes 0] [--soft-inodes 0] [--registry /etc/sandpod/customers.tsv]
 #     [--cpus 1.0] [--memory 1g] [--io-weight 100]
@@ -30,7 +30,7 @@ SERVICE_USER=""
 WEB_PORT=""
 SSH_PORT=""
 SSH_KEY=""
-IMAGE="localhost/sandpod/customer-runtime:pilot"
+IMAGE="localhost/sandpod/customer-runtime:node-shared"
 IMAGE_TAR=""
 IMAGE_SOURCE_USER=""
 SKIP_IMAGE_TRANSFER=0

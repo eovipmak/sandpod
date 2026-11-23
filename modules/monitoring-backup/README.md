@@ -36,10 +36,15 @@
 * Customer Nginx/FPM/cron/sshd log to container stdout/stderr via supervisord
   (`/dev/fd/1`, `/proc/self/fd/2`) - collected by `podman logs` / journald of
   the owning user manager. No files to rotate inside containers by design.
+  Cap the host journal so one chatty customer cannot fill the disk
+  (template: `config/sandpod-journald.conf` →
+  `/etc/systemd/journald.conf.d/sandpod.conf`, `SystemMaxUse=1G`,
+  `MaxFileSec=14day`; then `systemctl restart systemd-journald`).
 * Host nginx: default `/var/log/nginx/*` with system `logrotate`. Keep 14 days
   (template: `../host-nginx/config/sandpod-logrotate.conf` →
   `/etc/logrotate.d/sandpod`).
-* Retention: 7 daily customer tars + DB dumps; sync `/var/backups/sandpod` off-host.
+* Retention: 7 daily customer tars (pruned inside `backup-customer.sh --keep`)
+  + DB dumps; sync `/var/backups/sandpod` off-host.
 
 ## Systemd scheduling (templates, operator installs on host)
 
@@ -58,7 +63,9 @@ journalctl -u sandpod-resource-report.service --since today  # JSON output
 ## Before production (policy-owned, ngoài scope repo)
 
 * Disk quota: mechanism enforced by `host-storage` (XFS project per account,
-  soft 8G/hard 10G default). Active only after the `pquota` reboot;
+  soft 8G/hard 10G default). Active after the `pquota` reboot; first boot
+  re-applies limits via `host-storage/systemd/sandpod-quotas.service`
+  (custom quotas: re-run `set-customer-quota.sh` once).
   `resource-report.sh` falls back to `du` until then. Retention/off-host sync
   thuộc ops/panel (ngoài scope `docs/scope.md` §3).
 * Alerting/paging: repo chỉ xuất dữ liệu (`resource-report --json` +
