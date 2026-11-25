@@ -1,6 +1,6 @@
 # AGENTS.md — SandPod
 
-Small infra repo (no app code, tests, CI, lint, or package manager). Source of truth is executable files (`Containerfile`, `quadlet/*`, `scripts/*`), then `docs/architecture.md`. READMEs duplicate them; trust the executable on conflict.
+Small infra repo (no app code, CI, lint, or package manager; Go/Python contract tests live beside the code). Source of truth is executable files (`Containerfile`, `quadlet/*`, `modules/sandpodctl/*`, remaining `scripts/*`), then `docs/architecture.md`. READMEs duplicate them; trust the executable on conflict.
 
 ## Layout
 

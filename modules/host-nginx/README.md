@@ -44,4 +44,4 @@ offline without touching others: `mv sandpod-002.conf ~root/ && reload`.
 
 TLS termination, certificate issuance/renewal (including ACME challenges),
 rate limiting, WAF, per-site caching, and HTTP/3 are out of scope for this
-repo - owned by the edge/control-panel team. Status: prototype scripts.
+repo - owned by the edge/control-panel team. Status: prototype (`sandpodctl`).

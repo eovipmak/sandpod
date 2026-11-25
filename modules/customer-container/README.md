@@ -163,7 +163,7 @@ per-customer PHP-FPM master using the shared-runtime module's host helper
 `sandpodctl rollout-php-patch`; Node/Python likewise via
 `sandpodctl reload-customer-app` / `sandpodctl rollout-app-patch`).
 
-Isolation, quota, proxy, DB, and backup mechanisms exist as prototype scripts
+Isolation, quota, proxy, DB, and backup mechanisms exist as prototype tooling (`sandpodctl`)
 (`customer-provisioning`, `host-storage` XFS projects soft 8G/hard 10G,
 `host-nginx` plain-HTTP reverse proxy, `host-mariadb` per-site DB/user +
 backup/restore, `monitoring-backup` tar + `resource-report --json`, `panel-api`

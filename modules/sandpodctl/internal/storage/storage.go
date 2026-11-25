@@ -216,7 +216,6 @@ func QuotaReport(args []string) int {
 			}
 		}
 	}
-	fmt.Println("Project quota")
 	lines := strings.Split(string(out), "\n")
 	if len(lines) > 0 {
 		fmt.Println(lines[0])

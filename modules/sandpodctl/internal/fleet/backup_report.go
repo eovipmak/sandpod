@@ -109,28 +109,37 @@ func loadXFSReportFile(path string, blocks, inodes map[string]xfsEntry, byIDBloc
 	if err != nil {
 		return
 	}
+	nameRe := regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
+	sizeRe := regexp.MustCompile(`^[0-9]+(\.[0-9]+)?[KkMmGgTtPp]?$`)
+	tagged := map[string]bool{}
 	for _, line := range strings.Split(string(raw), "\n") {
-		if !regexp.MustCompile(`^\s*#[0-9]+\s`).MatchString(line) {
-			continue
-		}
+		// `xfs_quota report -p` rows are: <id-or-name> <used> <soft> <hard>
+		// <warn/grace>. The first column is the project name when one is
+		// configured, else `#<numeric-id>` (the `#` is not part of the key).
+		// Requiring a size in column 2 skips headers and separators.
 		f := strings.Fields(line)
-		if len(f) < 4 {
+		if len(f) < 4 || !sizeRe.MatchString(f[1]) {
 			continue
 		}
-		id, name, used, soft, hard := f[0], f[1], f[2], f[3], ""
-		if len(f) >= 5 {
-			hard = f[4]
-		}
-		if !regexp.MustCompile(`^[A-Za-z0-9_.-]+$`).MatchString(name) {
+		isTagged := strings.HasPrefix(f[0], "#")
+		key := strings.TrimPrefix(f[0], "#")
+		if !nameRe.MatchString(key) {
 			continue
 		}
+		// A broken /etc/projid can emit both `<id>` and `#<id>` for the same
+		// project; keep the `#id` row (the per-customer home tree).
+		if tagged[key] && !isTagged {
+			continue
+		}
+		entry := xfsEntry{Used: f[1], Soft: f[2], Hard: f[3]}
 		if blocks != nil {
-			blocks[name] = xfsEntry{used, soft, hard}
-			byIDBlocks[strings.TrimPrefix(id, "#")] = name
+			blocks[key] = entry
+			byIDBlocks[key] = key
 		} else {
-			inodes[name] = xfsEntry{used, soft, hard}
-			byIDInodes[strings.TrimPrefix(id, "#")] = name
+			inodes[key] = entry
+			byIDInodes[key] = key
 		}
+		tagged[key] = isTagged
 	}
 }
 

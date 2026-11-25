@@ -148,7 +148,7 @@ Machine-readable contract: `modules/panel-api/openapi.yaml`. Quy tắc bất bi�
   trong bảng `plans/panel-api.md` §1 với cùng validation
   (`valid_domain/minor/port`, port-app `3000-3999` do panel cấp).
   `DELETE` dùng query flags (`?delete_data/delete_user/delete_registry_entry/dry_run`),
-  không dùng body (tương thích client; `server.py` fallback đã đồng nhất query).
+  không dùng body (tương thích client; chỉ dùng query).
   `list-sites --json` và `resource-report --json` là shape trả về,
   panel không parse text.
 - Registry `customers.tsv`/`sites.tsv` vẫn là source-of-truth phía host;

@@ -39,7 +39,7 @@ Customers are provisioned by [`modules/customer-provisioning/`](modules/customer
 `~/config`, fleet registry). Disk quotas are enforced per account via XFS
 projects (soft 8G / hard 10G, see
 [`modules/host-storage/`](modules/host-storage/README.md)). Host Nginx and
-MariaDB integration exists as prototype scripts
+MariaDB integration exists as prototype tooling (`sandpodctl`)
 ([`host-nginx`](modules/host-nginx/README.md),
 [`host-mariadb`](modules/host-mariadb/README.md)) with no production domains,
 TLS termination/certificates (edge-owned, out of scope), or site databases yet.

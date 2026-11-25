@@ -94,7 +94,10 @@ func GenerateSiteConf(args []string) int {
 		fmt.Fprintf(os.Stderr, "No domains in %s.\n", registry)
 		return 1
 	}
-	sanitize := regexp.MustCompile(`[^A-Za-z0-9_.-]`)
+	// Domains are individually validated above; the joined list is only
+	// space-separated. Allow that separator here or every instance with an
+	// alias (two or more domains) is dropped as "sanitized names".
+	sanitize := regexp.MustCompile(`[^A-Za-z0-9_.\- ]`)
 	sanitizeInst := regexp.MustCompile(`[^A-Za-z0-9_-]`)
 	var insts []string
 	for k := range domains {
