@@ -40,12 +40,12 @@ Host services and customer workloads have separate lifecycles:
 | --- | --- | --- |
 | `customer-container` | Customer image, runtime processes, and rootless Quadlet | Prototype |
 | `shared-runtimes` | Host Remi PHP RPMs + fnm-managed Node trees + standalone Python prefixes, mounted read-only into customers | Prototype |
-| `host-nginx` | Host customer/site reverse-proxy configuration (plain HTTP only) | Prototype scripts |
-| `host-mariadb` | Shared DB service, per-site accounts, backup and restore | Prototype scripts |
-| `customer-provisioning` | Create accounts, storage, limits, keys, and service units | Prototype scripts |
-| `customer-apps` | Per-site mechanism (nginx maps, PHP version, data dirs) for the panel | Prototype scripts |
+| `host-nginx` | Host customer/site reverse-proxy configuration (plain HTTP only) | Prototype |
+| `host-mariadb` | Shared DB service, per-site accounts, backup and restore | Prototype |
+| `customer-provisioning` | Create accounts, storage, limits, keys, and service units | Prototype |
+| `customer-apps` | Per-site mechanism (nginx maps, PHP version, data dirs) for the panel | Prototype |
 | `host-storage` | XFS project quotas per customer (soft 8G / hard 10G) | Enforcing |
-| `monitoring-backup` | Resource monitoring, logs, and backup orchestration | Prototype scripts |
+| `monitoring-backup` | Resource monitoring, logs, and backup orchestration | Prototype |
 | `panel-api` | FastAPI daemon wrapping scripts for the panel (Spec v4, `openapi.yaml`): as root, loopback-only `127.0.0.1:8741`, Bearer token file `0600`, sync (<5s) + async (`202`+`jobId`) | Prototype |
 
 ## Runtime selection

@@ -27,7 +27,7 @@ panel later. PHP 8.0/8.1 are end-of-life and intentionally omitted.
 
 ## Install
 
-Run `scripts/install-*-runtimes.sh` as root. PHP installs the parallel
+Run `sandpodctl install-{php,node,python}-runtimes` as root. PHP installs the parallel
 FPM/CLI packages plus common extensions, but does not enable or start
 PHP-FPM services on the host. Node installs `fnm` to `/usr/local/bin/fnm`
 (unless `--no-fnm`) then the three majors. Python installs `uv` to
@@ -44,9 +44,9 @@ for container reads. Customer containers mount the paths read-only.
 Update the host trees to the newest patch:
 
 ```sh
-sudo modules/shared-runtimes/scripts/update-php-runtimes.sh
-sudo modules/shared-runtimes/scripts/update-node-runtimes.sh   # [--node22-ver X ...] [--no-fnm]
-sudo modules/shared-runtimes/scripts/update-python-runtimes.sh # [--py312-ver X ...]
+sudo sandpodctl update-php-runtimes
+sudo sandpodctl update-node-runtimes   # [--node22-ver X ...] [--no-fnm]
+sudo sandpodctl update-python-runtimes # [--py312-ver X ...]
 ```
 
 Package files update once on the host. Existing processes continue
@@ -55,20 +55,20 @@ container:
 
 ```sh
 # PHP: graceful reload of one FPM minor (config-test + USR2, no restarts):
-sudo modules/shared-runtimes/scripts/reload-customer-php.sh \
+sudo sandpodctl reload-customer-php \
   svc-c001 customer-001 8.3
 
 # Node/Python port app: restart one supervisord program (picks up new
 # /opt/sandpod binaries, runtime-agnostic):
-sudo modules/shared-runtimes/scripts/reload-customer-app.sh \
+sudo sandpodctl reload-customer-app \
   svc-c001 customer-001 node.example.com
 ```
 
 The PHP helper gracefully reloads that PHP version without recreating the
 container or restarting Nginx, SSH, cron, or other PHP-FPM minors. The app
 helper restarts one port app. Roll out to customers in batches and health-check
-each one — fleet wrappers live in `monitoring-backup/scripts/`:
-`rollout-php-patch.sh` (per-minor `USR2`) and `rollout-app-patch.sh`
+each one — fleet wrappers are subcommands too:
+`sandpodctl rollout-php-patch` (per-minor `USR2`) and `sandpodctl rollout-app-patch`
 (restarts every port app per customer, `--skip-node-update` /
 `--skip-python-update` available).
 

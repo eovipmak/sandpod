@@ -2,7 +2,7 @@
 
 Repo-only, fixture-based (no host). Covers plans/gaps-audit.md Part 4:
 401/0600/missing-token, public health+docs, global cap 409, body 413,
-job prune bound, ssh-key tmp cleanup, sync fail shapes, server.py parity.
+job prune bound, ssh-key tmp cleanup, sync fail shapes.
 """
 import os
 import stat
@@ -42,8 +42,6 @@ esac
         fh.write("secret-test-token\n")
     os.chmod(TOKEN, 0o600)
     os.environ["SANDPOD_SANDPODCTL"] = os.path.join(M, "sandpodctl")
-    os.environ.pop("SANDPOD_BACKEND", None)
-    os.environ.pop("SANDPOD_SCRIPT_DIR", None)
     os.environ["SANDPOD_REGISTRY"] = os.path.join(FIX, "customers.tsv")
     os.environ["SANDPOD_TOKEN_FILE"] = TOKEN
     os.environ.pop("SANDPOD_REQUIRE_AUTH", None)
@@ -189,12 +187,3 @@ def test_sync_fail_shapes():
         panel_app.run_script = orig
 
 
-def test_server_parity_strings():
-    api = os.path.join(os.path.dirname(__file__), "..")
-    srv = open(os.path.join(api, "server.py")).read()
-    for p in ('"/v1/dbs"', '"/v1/host-nginx/reload"',
-              '"/v1/rollouts/php"', '"/v1/rollouts/app"'):
-        assert p in srv, f"fallback must serve {p} (match app.py /v1 prefix)"
-    assert "delete_data" in srv  # DELETE via query flags, not body
-    assert "deleteData" not in srv
-    assert "413" in srv and "_too_large" in srv

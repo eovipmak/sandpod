@@ -16,8 +16,8 @@ generated template) so apps can trust the original scheme.
 
 * `config/sites/customer-002.conf.example` - generated file example.
 * `config/sandpod-logrotate.conf` - logrotate for `sandpod-*.log` (14 days) → `/etc/logrotate.d/sandpod`.
-* `scripts/generate-site-conf.sh` - registry + domain map -> `/etc/nginx/conf.d/sandpod-<id>.conf` (validates domains/ports, warns duplicates + stale; `--prune` deletes stale).
-* `scripts/reload-host-nginx.sh` - `nginx -t && systemctl reload nginx`.
+* `sandpodctl generate-site-conf` - registry + domain map -> `/etc/nginx/conf.d/sandpod-<id>.conf` (validates domains/ports, warns duplicates + stale; `--prune` deletes stale).
+* `sandpodctl reload-host-nginx` - `nginx -t && systemctl reload nginx`.
 * `systemd/sandpod-nginx-regen.{path,service}` - auto-regen + reload when `/etc/sandpod/*.tsv` change (`cp systemd/* /etc/systemd/system/ && systemctl enable --now sandpod-nginx-regen.path`).
 
 ## Inputs (policy lives outside this repo)
@@ -30,8 +30,8 @@ generated template) so apps can trust the original scheme.
 
 ```sh
 printf '002\texample002.test\n' | sudo tee /etc/sandpod/sites.tsv
-sudo modules/host-nginx/scripts/generate-site-conf.sh
-sudo modules/host-nginx/scripts/reload-host-nginx.sh
+sudo sandpodctl generate-site-conf
+sudo sandpodctl reload-host-nginx
 curl -H 'Host: example002.test' http://127.0.0.1/
 ```
 

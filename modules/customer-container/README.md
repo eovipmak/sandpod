@@ -148,10 +148,10 @@ Per-domain reverse proxies plus persistent processes, backed by host-side
   panel-chosen command as `customer` in `/srv/customer/<domain>` (or
   `public_html` with `--primary`), included from `supervisord.conf`.
 
-Manage them with `customer-apps/scripts/add-port-app.sh` /
-`remove-port-app.sh` (port range `3000-3999`, panel-allocated). Rebuilding
+Manage them with `sandpodctl add-port-app` /
+`sandpodctl remove-port-app` (port range `3000-3999`, panel-allocated). Rebuilding
 the image and recreating the container is required once to pick up the new
-`supervisord.conf` `[include]`; `add-port-app.sh` patches an older mounted
+`supervisord.conf` `[include]`; `sandpodctl add-port-app` patches an older mounted
 `nginx.conf` that lacks the sites include automatically.
 
 ## Not production-complete
@@ -159,9 +159,9 @@ the image and recreating the container is required once to pick up the new
 PHP executables/configuration are mounted read-only from host runtime prefixes.
 After updating the host RPMs, send a graceful reload to the affected
 per-customer PHP-FPM master using the shared-runtime module's host helper
-(`shared-runtimes/scripts/reload-customer-php.sh`, fleet wrapper
-`monitoring-backup/scripts/rollout-php-patch.sh`; Node/Python likewise via
-`reload-customer-app.sh` / `rollout-app-patch.sh`).
+(`sandpodctl reload-customer-php`, fleet wrapper
+`sandpodctl rollout-php-patch`; Node/Python likewise via
+`sandpodctl reload-customer-app` / `sandpodctl rollout-app-patch`).
 
 Isolation, quota, proxy, DB, and backup mechanisms exist as prototype scripts
 (`customer-provisioning`, `host-storage` XFS projects soft 8G/hard 10G,

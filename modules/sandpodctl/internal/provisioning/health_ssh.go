@@ -113,7 +113,8 @@ func AddSSHKey(args []string) int {
 		fmt.Fprintln(os.Stderr, "User manager not running (enable-linger first).")
 		return 1
 	}
-	remote := "key=\"$1\"\n" +
+	// key is validated against the OpenSSH regex above, so %q quoting is safe.
+	script := fmt.Sprintf("key=%q\n", key) +
 		"install -d -o customer -g customer -m 0700 /home/customer/.ssh\n" +
 		"touch /home/customer/.ssh/authorized_keys\n" +
 		"chown customer:customer /home/customer/.ssh/authorized_keys\n" +
@@ -121,32 +122,11 @@ func AddSSHKey(args []string) int {
 		"if ! grep -qxF \"$key\" /home/customer/.ssh/authorized_keys; then\n" +
 		"    printf '%s\\n' \"$key\" >> /home/customer/.ssh/authorized_keys\n" +
 		"fi\n"
-	_ = home
-	c := exec.Command("runuser", "-u", svc, "--", "env",
-		"HOME="+home,
-		fmt.Sprintf("XDG_RUNTIME_DIR=/run/user/%d", uid),
-		fmt.Sprintf("DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus", uid),
-		"podman", "exec", "-i", cont, "/bin/bash", "-euo", "pipefail", "-s", key)
+	c := platform.AsUser(svc, home, uid, "podman", "exec", "-i", cont, "/bin/bash", "-euo", "pipefail", "-s")
+	c.Stdin = strings.NewReader(script)
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
-	c.Stdin = strings.NewReader(remote)
-	// NOTE: podman exec -i reads the script on stdin; the key travels as $1.
-	// Go's exec cannot pass "$1" directly, so embed via extra sh -c wrapper:
-	// instead re-exec with bash -s and key as trailing arg is handled by
-	// passing key through environment-safe quoting below.
-	_ = c
-	// Simpler faithful approach: write key to a temp file readable only by
-	// the service user and pipe the remote script with the key inlined.
-	script := fmt.Sprintf("key=%q\n%s", key, strings.SplitN(remote, "\n", 2)[1])
-	c2 := exec.Command("runuser", "-u", svc, "--", "env",
-		"HOME="+home,
-		fmt.Sprintf("XDG_RUNTIME_DIR=/run/user/%d", uid),
-		fmt.Sprintf("DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus", uid),
-		"podman", "exec", "-i", cont, "/bin/bash", "-euo", "pipefail", "-s")
-	c2.Stdout = os.Stdout
-	c2.Stderr = os.Stderr
-	c2.Stdin = strings.NewReader(script)
-	if err := c2.Run(); err != nil {
+	if err := c.Run(); err != nil {
 		return 1
 	}
 	fmt.Printf("Installed key into %s:/home/customer/.ssh/authorized_keys\n", cont)

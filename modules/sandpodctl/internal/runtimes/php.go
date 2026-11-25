@@ -4,7 +4,6 @@ package runtimes
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -43,16 +42,10 @@ func ReloadCustomerPHP(args []string) int {
 		fmt.Fprintln(os.Stderr, "The service account needs an active lingering user manager.")
 		return 1
 	}
-	c := exec.Command("runuser", "-u", svc, "--", "env",
-		"HOME="+home,
-		fmt.Sprintf("XDG_RUNTIME_DIR=/run/user/%d", uid),
-		fmt.Sprintf("DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus", uid),
-		"/bin/bash", "-c",
+	err = platform.RunAsUser(svc, home, uid, "/bin/bash", "-c",
 		`cd "$HOME" && podman exec "$1" /usr/local/bin/sandpod-runtime-reload "$2"`,
 		"--", cont, minor)
-	c.Stdout = os.Stdout
-	c.Stderr = os.Stderr
-	if err := c.Run(); err != nil {
+	if err != nil {
 		return 1
 	}
 	return 0
@@ -97,13 +90,11 @@ func ReloadCustomerApp(args []string) int {
 	return 0
 }
 
-func enforcing() bool {
-	if !platform.Have("getenforce") {
-		return false
-	}
-	out, err := exec.Command("getenforce").Output()
-	return err == nil && strings.TrimSpace(string(out)) == "Enforcing"
-}
+// remiPaths are the host Remi trees mounted read-only into customers.
+var (
+	remiPaths         = []string{"/opt/remi", "/etc/opt/remi", "/usr/lib64/libonig.so.105"}
+	remiLabelPatterns = []string{`/opt/remi(/.*)?`, `/etc/opt/remi(/.*)?`, `/usr/lib64/libonig\.so\.105`}
+)
 
 // InstallPHPRuntimes ports install-php-runtimes.sh.
 func InstallPHPRuntimes(args []string) int {
@@ -114,12 +105,7 @@ func InstallPHPRuntimes(args []string) int {
 	if code := platform.MustRoot(); code != -1 {
 		return code
 	}
-	run := func(prog string, a ...string) error {
-		c := exec.Command(prog, a...)
-		c.Stdout = os.Stdout
-		c.Stderr = os.Stderr
-		return c.Run()
-	}
+	run := platform.Run
 	if err := run("dnf", "install", "-y", "https://rpms.remirepo.net/enterprise/remi-release-10.rpm"); err != nil {
 		return 1
 	}
@@ -137,18 +123,12 @@ func InstallPHPRuntimes(args []string) int {
 		fmt.Fprintln(os.Stderr, "WARNING: php86-* not available in Remi on this host; 8.2-8.5 installed, 8.6 skipped.")
 		fmt.Fprintln(os.Stderr, "Re-run this command after Remi publishes php86 to enable the 8.6 route.")
 	}
-	if enforcing() {
-		if !platform.Have("semanage") {
-			fmt.Fprintln(os.Stderr, "Install policycoreutils-python-utils to label shared runtime paths.")
+	if platform.SELinuxEnforcing() {
+		if err := platform.LabelContainerFiles(remiLabelPatterns...); err != nil {
+			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
-		for _, p := range []string{`/opt/remi(/.*)?`, `/etc/opt/remi(/.*)?`, `/usr/lib64/libonig\.so\.105`} {
-			c := exec.Command("semanage", "fcontext", "-a", "-t", "container_file_t", p)
-			if c.Run() != nil {
-				_ = exec.Command("semanage", "fcontext", "-m", "-t", "container_file_t", p).Run()
-			}
-		}
-		_ = run("restorecon", "-RF", "/opt/remi", "/etc/opt/remi", "/usr/lib64/libonig.so.105")
+		_ = platform.Restorecon(true, remiPaths...)
 	}
 	return 0
 }
@@ -163,10 +143,7 @@ func UpdatePHPRuntimes(args []string) int {
 		return code
 	}
 	run := func(a ...string) error {
-		c := exec.Command("dnf", a...)
-		c.Stdout = os.Stdout
-		c.Stderr = os.Stderr
-		return c.Run()
+		return platform.Run("dnf", a...)
 	}
 	if err := run("upgrade", "-y", "php82-*", "php83-*", "php84-*", "php85-*", "oniguruma5php"); err != nil {
 		return 1
@@ -174,8 +151,8 @@ func UpdatePHPRuntimes(args []string) int {
 	if err := run("upgrade", "-y", "php86-*"); err != nil {
 		fmt.Fprintln(os.Stderr, "WARNING: php86-* not available; 8.2-8.5 updated.")
 	}
-	if enforcing() {
-		_ = run("restorecon", "-RF", "/opt/remi", "/etc/opt/remi", "/usr/lib64/libonig.so.105")
+	if platform.SELinuxEnforcing() {
+		_ = platform.Restorecon(true, remiPaths...)
 	}
 	fmt.Println("PHP RPMs are updated. Running FPM workers still use their loaded runtime.")
 	fmt.Println("Gracefully reload the affected PHP-FPM minor version in each customer container.")

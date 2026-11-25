@@ -368,8 +368,8 @@ func SetCustomerQuota(args []string) int {
 		fmt.Fprintln(os.Stderr, "Unknown user.")
 		return 1
 	}
-	uidOut, _ := exec.Command("id", "-u", svc).Output()
-	projid := strings.TrimSpace(string(uidOut))
+	_, uid, _ := platform.LookupAccount(svc)
+	projid := strconv.Itoa(uid)
 	if home == "" || home == "/" || !strings.HasPrefix(home, "/home/") {
 		fmt.Fprintf(os.Stderr, "Refusing: unexpected home '%s' for %s.\n", home, svc)
 		return 1

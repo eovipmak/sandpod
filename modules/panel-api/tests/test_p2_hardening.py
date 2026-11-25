@@ -2,7 +2,7 @@
 
 Covers Part 2 of plans/gaps-audit.md: provision format checks, ssh-key
 whitelist, rollout int-safety, 404 shape, resources miss -> 404,
-jobs.acquire atomicity, submit failure cleanup, server.py guards.
+jobs.acquire atomicity, submit failure cleanup.
 """
 import os
 import stat
@@ -34,8 +34,6 @@ esac
     with open(os.path.join(FIX, "customers.tsv"), "w") as fh:
         fh.write("001\tsvc-c001\tcustomer-001\t18001\t22201\timg:pilot\n")
     os.environ["SANDPOD_SANDPODCTL"] = os.path.join(M, "sandpodctl")
-    os.environ.pop("SANDPOD_BACKEND", None)
-    os.environ.pop("SANDPOD_SCRIPT_DIR", None)
     os.environ["SANDPOD_REGISTRY"] = os.path.join(FIX, "customers.tsv")
     os.environ["SANDPOD_TOKEN_FILE"] = os.path.join(FIX, "panel-api.token.absent")
 
@@ -147,14 +145,3 @@ def test_jobs_acquire_atomic_and_cleanup():
         jobs.clear()
 
 
-def test_server_fallback_guards_present():
-    import os as _os
-    api = _os.path.join(_os.path.dirname(__file__), "..")
-    srv = open(_os.path.join(api, "server.py")).read()
-    assert "parse_qs" in srv  # DELETE query flags, not body
-    assert "MAX_BODY_BYTES" in srv  # body cap, not unbounded read
-    assert "_too_large" in srv and "_bad_json" in srv
-    assert "timeout=7200" in srv  # rollout needs fleet timeout, not 1800
-    app_src = open(_os.path.join(api, "app.py")).read()
-    assert "acquire_or_409" in app_src  # atomic cap+instance, no TOCTOU
-    assert "jobs.acquire" in app_src

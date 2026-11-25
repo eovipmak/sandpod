@@ -19,21 +19,13 @@ func needTool(name string) error {
 }
 
 func selinuxLabel(prefix string) error {
-	if !enforcing() {
+	if !platform.SELinuxEnforcing() {
 		return nil
 	}
-	if !platform.Have("semanage") {
-		return fmt.Errorf("Install policycoreutils-python-utils to label shared runtime paths.")
+	if err := platform.LabelContainerFiles(prefix + `(/.*)?`); err != nil {
+		return err
 	}
-	pat := prefix + `(/.*)?`
-	c := exec.Command("semanage", "fcontext", "-a", "-t", "container_file_t", pat)
-	if c.Run() != nil {
-		_ = exec.Command("semanage", "fcontext", "-m", "-t", "container_file_t", pat).Run()
-	}
-	rc := exec.Command("restorecon", "-RF", prefix)
-	rc.Stdout = os.Stdout
-	rc.Stderr = os.Stderr
-	return rc.Run()
+	return platform.Restorecon(true, prefix)
 }
 
 // InstallNodeRuntimes ports install-node-runtimes.sh.
@@ -118,8 +110,7 @@ func InstallNodeRuntimes(args []string) int {
 				return err
 			}
 		}
-		archOut, _ := exec.Command("uname", "-m").Output()
-		arch := strings.TrimSpace(string(archOut))
+		arch := platform.Arch()
 		switch arch {
 		case "x86_64":
 			arch = "x64"
@@ -211,9 +202,7 @@ func InstallNodeRuntimes(args []string) int {
 		}
 		defer os.RemoveAll(tmp)
 		fmt.Printf("Fetching node v%s -> %s ...\n", ver, dest)
-		dl := exec.Command("curl", "-fsSL", url, "-o", filepath.Join(tmp, "node.tar.xz"))
-		dl.Stdout, dl.Stderr = os.Stdout, os.Stderr
-		if err := dl.Run(); err != nil {
+		if err := platform.Fetch(url, filepath.Join(tmp, "node.tar.xz")); err != nil {
 			return err
 		}
 		un := exec.Command("tar", "-xJf", filepath.Join(tmp, "node.tar.xz"), "-C", tmp)
@@ -312,10 +301,8 @@ func UpdateNodeRuntimes(args []string) int {
 	if code != 0 {
 		return code
 	}
-	if enforcing() {
-		c := exec.Command("restorecon", "-RF", prefix)
-		c.Stdout, c.Stderr = os.Stdout, os.Stderr
-		_ = c.Run()
+	if platform.SELinuxEnforcing() {
+		_ = platform.Restorecon(true, prefix)
 	}
 	fmt.Println("Node trees are updated. Running port apps still use their loaded runtime.")
 	fmt.Println("Restart each affected port app in every customer container")

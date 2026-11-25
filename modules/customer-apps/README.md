@@ -10,19 +10,19 @@ domains/versions/ports; these scripts execute *how* (idempotent, with
 
 ```sh
 # PHP site on 002, served from ~/data/shop.example.com, PHP 8.4:
-sudo modules/customer-apps/scripts/add-site.sh svc-c002 customer-002 shop.example.com --php 8.4
+sudo sandpodctl add-site svc-c002 customer-002 shop.example.com --php 8.4
 curl -H 'Host: shop.example.com' http://127.0.0.1:18002/index.php
 
 # Primary domain (serves ~/data/public_html):
-sudo modules/customer-apps/scripts/add-site.sh svc-c001 customer-001 example.com --primary --php 8.3
+sudo sandpodctl add-site svc-c001 customer-001 example.com --primary --php 8.3
 
 # Change version / remove / inspect:
-sudo modules/customer-apps/scripts/set-php-version.sh svc-c002 customer-002 shop.example.com 8.5
-sudo modules/customer-apps/scripts/list-sites.sh svc-c002 customer-002 [--json]
-sudo modules/customer-apps/scripts/remove-site.sh svc-c002 customer-002 shop.example.com [--delete-data]
+sudo sandpodctl set-php-version svc-c002 customer-002 shop.example.com 8.5
+sudo sandpodctl list-sites svc-c002 customer-002 [--json]
+sudo sandpodctl remove-site svc-c002 customer-002 shop.example.com [--delete-data]
 ```
 
-`add-site.sh` creates `~/data/<domain>` (+ placeholder `index.php`),
+`sandpodctl add-site` creates `~/data/<domain>` (+ placeholder `index.php`),
 inserts `$site_root` and `$php_fpm_backend` map entries, then
 `nginx -t && nginx -s reload` inside the container via `podman exec`.
 If the domain currently has a port app, its `sites/` + `supervisor/` configs
@@ -32,22 +32,22 @@ restores it if the reload fails.
 ## Port apps (Node/Python)
 
 ```sh
-sudo modules/customer-apps/scripts/add-port-app.sh svc-c002 customer-002 node.example.com --port 3001 --command "node server.js"
+sudo sandpodctl add-port-app svc-c002 customer-002 node.example.com --port 3001 --command "node server.js"
 curl -H 'Host: node.example.com' http://127.0.0.1:18002/
 
-sudo modules/customer-apps/scripts/remove-port-app.sh svc-c002 customer-002 node.example.com [--delete-data]
+sudo sandpodctl remove-port-app svc-c002 customer-002 node.example.com [--delete-data]
 ```
 
-`add-port-app.sh` writes `~/config/sites/<domain>.conf` (a `server` block with
+`sandpodctl add-port-app` writes `~/config/sites/<domain>.conf` (a `server` block with
 exact `server_name` that shadows the catch-all PHP server and proxies `/` to
 `http://127.0.0.1:<port>` with `Host` + `X-Forwarded-*` headers) and
 `~/config/supervisor/<domain>.conf` (`[program:app-<domain>]` running
 `<command>` as `customer` in `/srv/customer/<domain>`), drops any PHP map
 entries for the domain, then `nginx -t && nginx -s reload` plus
 `supervisorctl reread && supervisorctl update`. Rollback restores `.bak`
-copies on failure. `remove-port-app.sh` deletes both generated files and
-reloads both services; re-add via `add-site.sh` to convert back to PHP.
-`list-sites.sh` prints both the PHP maps and a `port_apps:` section.
+copies on failure. `sandpodctl remove-port-app` deletes both generated files and
+reloads both services; re-add via `sandpodctl add-site` to convert back to PHP.
+`sandpodctl list-sites` prints both the PHP maps and a `port_apps:` section.
 
 ## Contract notes
 
@@ -68,7 +68,7 @@ Port apps need image build ≥ this change: `nginx.conf` includes
 `include /etc/sandpod-config/sites/*.conf;`, `supervisord.conf` has the
 `[include] files = /etc/sandpod-config/supervisor/*.conf` section, and
 `~/config/sites` + `~/config/supervisor` exist (created by
-`provision-customer.sh` for new customers). `add-port-app.sh` also patches a
+`sandpodctl provision-customer` for new customers). `sandpodctl add-port-app` also patches a
 pre-existing `~/config/nginx.conf` that lacks the sites include, but the
 container must be recreated from the new image for the supervisord include
 to take effect.

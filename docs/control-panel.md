@@ -32,7 +32,7 @@ The panel may rely on these without inspecting image internals:
   `~/config/nginx.conf`.
 - Reload helpers: in-container `sandpod-runtime-reload {8.2|8.3|8.4|8.5|8.6}`
   (config-test + `USR2` to one FPM master); host-side
-  `shared-runtimes/scripts/reload-customer-php.sh <service-user>
+  `sandpodctl reload-customer-php <service-user>
   <container> <minor>` which calls it via `podman exec`.
 - The `php8X.test` hostnames in the shipped `nginx.conf` are pilot test
   fixtures only, not production domains.
@@ -43,16 +43,16 @@ The panel may rely on these without inspecting image internals:
   domain in `~/data/<domain>`.
 - `~/config/nginx.conf` map entries: which `Host` serves which directory
   (`$site_root`) and which PHP version (`$php_fpm_backend`). Use the
-  `customer-apps` module scripts (`add-site.sh`, `set-php-version.sh`,
-  `remove-site.sh`, `list-sites.sh`) - never hand-edit with `sed`. Port
+  `customer-apps` module scripts (`sandpodctl add-site`, `sandpodctl set-php-version`,
+  `sandpodctl remove-site`, `sandpodctl list-sites`) - never hand-edit with `sed`. Port
   apps (`proxy_pass` per `Host`) are expressed as generated per-domain
   `server` blocks in `~/config/sites/<domain>.conf` via
-  `customer-apps/scripts/add-port-app.sh` (nginx include) plus a persistent
+  `sandpodctl add-port-app` (nginx include) plus a persistent
   process in `~/config/supervisor/<domain>.conf` (supervisord include).
 - Customer port apps: choosing the runtime binary, starting/stopping the
   process, keeping it alive, and reloading Nginx afterwards
   (`nginx -t` then `nginx -s reload` via `podman exec`). Implemented by
-  `add-port-app.sh` / `remove-port-app.sh` (`supervisorctl reread &&
+  `sandpodctl add-port-app` / `sandpodctl remove-port-app` (`supervisorctl reread &&
   supervisorctl update` after the nginx gate, `.bak` rollback on failure).
 - App port allocation: each customer app listens on `127.0.0.1` only, one
   port per app from range `3000-3999`. The panel allocates ports from this
@@ -85,7 +85,7 @@ spec bump):
 - Exit codes for all `customer-apps` / `customer-provisioning` scripts:
   `0` ok, `1` runtime failure (a `.bak` rollback was attempted),
   `2` bad arguments/input (bad domain, port, minor, missing flag).
-- `list-sites.sh [--json]`: default text output is stable; `--json` prints
+- `sandpodctl list-sites [--json]`: default text output is stable; `--json` prints
   `{"defaults": {"site_root", "php_fpm_backend"}, "php_sites":
   [{"domain", "root", "backend"}], "port_apps": [{"domain", "port",
   "target", "program", "command", "directory"}]}` (missing map entries are
@@ -124,11 +124,11 @@ Shared Node.js / Python runtimes. Everything in Spec v2 stays unchanged.
   (`/opt/sandpod/node/<major>/bin/node`,
   `/opt/sandpod/python/<ver>/bin/python3.<minor>`) and fall back to
   the bare `node/node-*/python3.*` names when the mount is absent.
-- Reload/rollout helpers: `reload-customer-app.sh <service-user>
+- Reload/rollout helpers: `sandpodctl reload-customer-app <service-user>
   <container> <domain>` restarts one port app (`supervisorctl restart`,
-  runtime-agnostic); `monitoring-backup/scripts/rollout-app-patch.sh`
+  runtime-agnostic); `sandpodctl rollout-app-patch`
   updates host Node/Python trees then restarts every port app per
-  customer in batches with health-checks (mirrors `rollout-php-patch.sh`
+  customer in batches with health-checks (mirrors `sandpodctl rollout-php-patch`
   but for port apps: no `USR2`, a restart picks up the new binaries).
 
 ## Spec v4 (draft 2026-11-23, Pha panel-api)
@@ -152,4 +152,4 @@ Machine-readable contract: `modules/panel-api/openapi.yaml`. Quy tắc bất bi�
   `list-sites --json` và `resource-report --json` là shape trả về,
   panel không parse text.
 - Registry `customers.tsv`/`sites.tsv` vẫn là source-of-truth phía host;
-  `create-site-db.sh` trả creds một lần, API không lưu disk.
+  `sandpodctl create-site-db` trả creds một lần, API không lưu disk.

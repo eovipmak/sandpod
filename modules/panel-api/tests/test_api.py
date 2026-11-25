@@ -23,8 +23,7 @@ def setup_module(_):
     M = os.path.join(FIX, "mods")
     os.makedirs(M, exist_ok=True)
     _write(os.path.join(M, "sandpodctl"), '''#!/usr/bin/env bash
-# Fixture fake for the Go sandpodctl binary: $1 = subcommand, then same
-# argv as the legacy *.sh scripts.
+# Fixture fake for the Go sandpodctl binary: $1 = subcommand, then its argv.
 cmd="$1"; shift
 case "$cmd" in
   list-sites) echo '{"defaults":{},"php_sites":[],"port_apps":[]}' ;;
@@ -49,8 +48,6 @@ esac
     with open(os.path.join(FIX, "customers.tsv"), "w") as fh:
         fh.write("001\tsvc-c001\tcustomer-001\t18001\t22201\timg:pilot\n")
     os.environ["SANDPOD_SANDPODCTL"] = os.path.join(M, "sandpodctl")
-    os.environ.pop("SANDPOD_BACKEND", None)
-    os.environ.pop("SANDPOD_SCRIPT_DIR", None)
     os.environ["SANDPOD_REGISTRY"] = os.path.join(FIX, "customers.tsv")
     # Hermetic auth: point at a fixture path that never exists, so the result
     # never depends on the host's real /etc/sandpod/panel-api.token (or lack).

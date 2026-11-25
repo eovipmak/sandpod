@@ -68,13 +68,9 @@ func UserManagerUp(uid int) bool {
 	return err == nil && st.IsDir()
 }
 
-// Run executes a program, wiring stdout/stderr through.
+// Run executes a program, wiring stdio through.
 func Run(name string, args ...string) error {
-	c := exec.Command(name, args...)
-	c.Stdout = os.Stdout
-	c.Stderr = os.Stderr
-	c.Stdin = os.Stdin
-	return c.Run()
+	return RunCmd(exec.Command(name, args...))
 }
 
 // Output runs a program and returns combined stdout.
@@ -83,66 +79,80 @@ func Output(name string, args ...string) (string, error) {
 	return string(out), err
 }
 
-// RunAsUser mirrors:
+// AsUser builds the command that runs prog as the account, with the env a
+// rootless user manager needs. Mirrors:
 //
 //	runuser -u $user -- env HOME=$home XDG_RUNTIME_DIR=/run/user/$uid \
 //	    DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus <prog> <args...>
-func RunAsUser(serviceUser, home string, uid int, prog string, args ...string) error {
+//
+// Callers set Stdin/Stdout/Stderr or use RunAsUser/OutputAsUser.
+func AsUser(serviceUser, home string, uid int, prog string, args ...string) *exec.Cmd {
 	full := []string{"-u", serviceUser, "--", "env",
 		"HOME=" + home,
 		fmt.Sprintf("XDG_RUNTIME_DIR=/run/user/%d", uid),
 		fmt.Sprintf("DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus", uid),
 		prog,
 	}
-	full = append(full, args...)
-	return Run("runuser", full...)
+	return exec.Command("runuser", append(full, args...)...)
+}
+
+// RunAsUser runs prog as the account, wiring stdio through.
+func RunAsUser(serviceUser, home string, uid int, prog string, args ...string) error {
+	return RunCmd(AsUser(serviceUser, home, uid, prog, args...))
 }
 
 // OutputAsUser is RunAsUser returning stdout.
 func OutputAsUser(serviceUser, home string, uid int, prog string, args ...string) (string, error) {
-	full := []string{"-u", serviceUser, "--", "env",
-		"HOME=" + home,
-		fmt.Sprintf("XDG_RUNTIME_DIR=/run/user/%d", uid),
-		fmt.Sprintf("DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus", uid),
-		prog,
-	}
-	full = append(full, args...)
-	out, err := exec.Command("runuser", full...).Output()
+	out, err := AsUser(serviceUser, home, uid, prog, args...).Output()
 	return string(out), err
+}
+
+// RunCmd runs c with stdio wired through.
+func RunCmd(c *exec.Cmd) error {
+	c.Stdin = os.Stdin
+	c.Stdout = os.Stdout
+	c.Stderr = os.Stderr
+	return c.Run()
+}
+
+// userCmd builds prog for the account, resolving its home and uid.
+func userCmd(serviceUser string, prog string, args ...string) (*exec.Cmd, error) {
+	home, uid, err := LookupAccount(serviceUser)
+	if err != nil {
+		return nil, err
+	}
+	return AsUser(serviceUser, home, uid, prog, args...), nil
 }
 
 // ContainerExec mirrors lib.sh container_exec (podman exec as the account).
 func ContainerExec(serviceUser, container string, args ...string) error {
-	home, uid, err := LookupAccount(serviceUser)
+	c, err := userCmd(serviceUser, "podman", append([]string{"exec", container}, args...)...)
 	if err != nil {
 		return err
 	}
-	podArgs := append([]string{"exec", container}, args...)
-	return RunAsUser(serviceUser, home, uid, "podman", podArgs...)
+	return RunCmd(c)
 }
 
 // UserSystemctl runs `systemctl --user` as the account; bestEffort mirrors
 // `|| true` used by remove-customer.sh.
 func UserSystemctl(serviceUser string, bestEffort bool, args ...string) error {
-	home, uid, err := LookupAccount(serviceUser)
+	c, err := userCmd(serviceUser, "systemctl", append([]string{"--user"}, args...)...)
 	if err != nil {
 		return err
 	}
-	sysArgs := append([]string{"--user"}, args...)
-	err = RunAsUser(serviceUser, home, uid, "systemctl", sysArgs...)
-	if err != nil && bestEffort {
-		return nil
+	if err := RunCmd(c); err != nil && !bestEffort {
+		return err
 	}
-	return err
+	return nil
 }
 
 // UserPodman runs `podman` as the account.
 func UserPodman(serviceUser string, args ...string) error {
-	home, uid, err := LookupAccount(serviceUser)
+	c, err := userCmd(serviceUser, "podman", args...)
 	if err != nil {
 		return err
 	}
-	return RunAsUser(serviceUser, home, uid, "podman", args...)
+	return RunCmd(c)
 }
 
 // CopyFile mirrors `cp -a src dst` for regular files (content + mode 0644 default kept).

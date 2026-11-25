@@ -8,4 +8,4 @@ After=network.target
 [Service]
 Type=oneshot
 User=root
-ExecStart=/opt/sandpod/repo/modules/monitoring-backup/scripts/resource-report.sh --json
+ExecStart=/opt/sandpod/repo/modules/sandpodctl/sandpodctl resource-report --json

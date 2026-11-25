@@ -1,5 +1,5 @@
 """SandPod panel-api (FastAPI). Mechanism only — wraps the sandpodctl Go binary
-(same argv as the legacy modules/*/scripts/*.sh).
+(backend: sandpodctl, argv như script bash cũ).
 
 Run as root on host, loopback-only. Panel (same host) calls 127.0.0.1:8741.
 Auth: Bearer token file (0600). /v1/health is public for systemd/readiness.
@@ -656,7 +656,7 @@ def backup(iid: str, dry_run: bool = False):
     if dry_run:
         return {"dryRun": True, "cmd": build_cmd("backup", [iid])}
     acquire_or_409(f"backup-{iid}", f"backup for {iid} already running")
-    # backup-customer.sh prints the tar path on stdout (last line).
+    # sandpodctl backup-customer prints the tar path on stdout (last line).
     return Job(jobId=jobs.submit("backup", "backup", [iid],
                                  instance=f"backup-{iid}"),
                status="queued")

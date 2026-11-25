@@ -64,15 +64,14 @@ func InstallPythonRuntimes(args []string) int {
 		fmt.Fprintf(os.Stderr, "Bad --release-tag: %s.\n", releaseTag)
 		return 2
 	}
-	archOut, _ := exec.Command("uname", "-m").Output()
 	var target string
-	switch strings.TrimSpace(string(archOut)) {
+	switch arch := platform.Arch(); arch {
 	case "x86_64":
 		target = "x86_64-unknown-linux-gnu"
 	case "aarch64":
 		target = "aarch64-unknown-linux-gnu"
 	default:
-		fmt.Fprintf(os.Stderr, "Unsupported arch: %s\n", strings.TrimSpace(string(archOut)))
+		fmt.Fprintf(os.Stderr, "Unsupported arch: %s\n", arch)
 		return 1
 	}
 	uvDir := filepath.Join(prefix, ".uv")
@@ -96,9 +95,7 @@ func InstallPythonRuntimes(args []string) int {
 		defer os.RemoveAll(tmp)
 		fmt.Printf("Fetching uv v%s ...\n", uvVer)
 		url := fmt.Sprintf("https://github.com/astral-sh/uv/releases/download/%s/uv-%s.tar.gz", uvVer, target)
-		dl := exec.Command("curl", "-fsSL", url, "-o", filepath.Join(tmp, "uv.tar.gz"))
-		dl.Stdout, dl.Stderr = os.Stdout, os.Stderr
-		if err := dl.Run(); err != nil {
+		if err := platform.Fetch(url, filepath.Join(tmp, "uv.tar.gz")); err != nil {
 			return err
 		}
 		un := exec.Command("tar", "-xzf", filepath.Join(tmp, "uv.tar.gz"), "-C", tmp)
@@ -187,9 +184,7 @@ func InstallPythonRuntimes(args []string) int {
 		}
 		defer os.RemoveAll(tmp)
 		fmt.Printf("Fetching CPython %s -> %s ...\n", ver, dest)
-		dl := exec.Command("curl", "-fsSL", url, "-o", filepath.Join(tmp, "python.tar.gz"))
-		dl.Stdout, dl.Stderr = os.Stdout, os.Stderr
-		if err := dl.Run(); err != nil {
+		if err := platform.Fetch(url, filepath.Join(tmp, "python.tar.gz")); err != nil {
 			return err
 		}
 		un := exec.Command("tar", "-xzf", filepath.Join(tmp, "python.tar.gz"), "-C", tmp)
@@ -281,10 +276,8 @@ func UpdatePythonRuntimes(args []string) int {
 	if code := InstallPythonRuntimes(pass); code != 0 {
 		return code
 	}
-	if enforcing() {
-		c := exec.Command("restorecon", "-RF", prefix)
-		c.Stdout, c.Stderr = os.Stdout, os.Stderr
-		_ = c.Run()
+	if platform.SELinuxEnforcing() {
+		_ = platform.Restorecon(true, prefix)
 	}
 	fmt.Println("Python trees are updated. Running port apps still use their loaded runtime.")
 	fmt.Println("Restart each affected port app in every customer container")

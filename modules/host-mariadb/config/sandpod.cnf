@@ -6,10 +6,10 @@
 # the container's own netns). Find yours with:
 #   podman exec customer-001 getent hosts host.containers.internal
 # then open the firewall for that subnet ONLY (never 0.0.0.0/0 for 3306)
-# and create users (create-site-db.sh makes 'user'@'%' — tighten to the
+# and create users (sandpodctl create-site-db makes 'user'@'%' — tighten to the
 # pasta subnet once it is pinned in your environment).
 [mariadbd]
-# utf8mb4 everywhere (matches CREATE DATABASE in create-site-db.sh)
+# utf8mb4 everywhere (matches CREATE DATABASE in sandpodctl create-site-db)
 character-set-server = utf8mb4
 collation-server = utf8mb4_unicode_ci
 # Loopback + pasta gateway. Add the gateway IP found above, e.g.:

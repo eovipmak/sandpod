@@ -7,4 +7,4 @@ After=nginx.service
 [Service]
 Type=oneshot
 User=root
-ExecStart=/bin/sh -c '/opt/sandpod/repo/modules/host-nginx/scripts/generate-site-conf.sh && /opt/sandpod/repo/modules/host-nginx/scripts/reload-host-nginx.sh'
+ExecStart=/bin/sh -c '/opt/sandpod/repo/modules/sandpodctl/sandpodctl generate-site-conf && /opt/sandpod/repo/modules/sandpodctl/sandpodctl reload-host-nginx'

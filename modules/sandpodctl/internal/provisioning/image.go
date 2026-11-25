@@ -3,7 +3,6 @@ package provisioning
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 
 	"sandpodctl/internal/platform"
@@ -60,14 +59,8 @@ func ensureImage(svc, home string, uid int, image, imageTar, imageSourceUser, re
 		if donor == svc {
 			continue
 		}
-		if exec.Command("id", donor).Run() != nil {
-			continue
-		}
 		dhome, duid, err := platform.LookupAccount(donor)
-		if err != nil {
-			continue
-		}
-		if _, err := os.Stat(fmt.Sprintf("/run/user/%d", duid)); err != nil {
+		if err != nil || !platform.UserManagerUp(duid) {
 			continue
 		}
 		if !imageExistsAs(donor, dhome, duid, image) {
@@ -82,12 +75,7 @@ func ensureImage(svc, home string, uid int, image, imageTar, imageSourceUser, re
 		tmp.Close()
 		_ = os.Chown(tmpPath, duid, duid)
 		_ = os.Chmod(tmpPath, 0600)
-		save := exec.Command("runuser", "-u", donor, "--", "env",
-			"HOME="+dhome, fmt.Sprintf("XDG_RUNTIME_DIR=/run/user/%d", duid),
-			"podman", "save", "-o", tmpPath, image)
-		save.Stdout = os.Stdout
-		save.Stderr = os.Stderr
-		if err := save.Run(); err != nil {
+		if err := platform.RunCmd(platform.AsUser(donor, dhome, duid, "podman", "save", "-o", tmpPath, image)); err != nil {
 			_ = os.Remove(tmpPath)
 			continue
 		}
@@ -99,8 +87,5 @@ func ensureImage(svc, home string, uid int, image, imageTar, imageSourceUser, re
 }
 
 func imageExistsAs(svc, home string, uid int, image string) bool {
-	c := exec.Command("runuser", "-u", svc, "--", "env",
-		"HOME="+home, fmt.Sprintf("XDG_RUNTIME_DIR=/run/user/%d", uid),
-		"podman", "image", "exists", image)
-	return c.Run() == nil
+	return platform.AsUser(svc, home, uid, "podman", "image", "exists", image).Run() == nil
 }

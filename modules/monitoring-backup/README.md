@@ -2,32 +2,32 @@
 
 ## Scripts (run as root)
 
-* `scripts/rollout-php-patch.sh` - fleet PHP patch: `update-php-runtimes.sh`
-  once, then per-customer per-minor `reload-customer-php.sh` + `health-check.sh`
+* `sandpodctl rollout-php-patch` - fleet PHP patch: `sandpodctl update-php-runtimes`
+  once, then per-customer per-minor `sandpodctl reload-customer-php` + `sandpodctl health-check`
   in batches (default 5, sleep 10s). Stops on first failed batch.
   ```sh
-  sudo modules/monitoring-backup/scripts/rollout-php-patch.sh --batch-size 2
-  sudo modules/monitoring-backup/scripts/rollout-php-patch.sh --minor 8.3 --minor 8.4 --skip-update
+  sudo sandpodctl rollout-php-patch --batch-size 2
+  sudo sandpodctl rollout-php-patch --minor 8.3 --minor 8.4 --skip-update
   ```
-* `scripts/rollout-app-patch.sh` - fleet Node/Python patch:
-  `update-node-runtimes.sh` + `update-python-runtimes.sh` once, then per
-  customer restart every port app (`reload-customer-app.sh` per domain from
-  `list-sites.sh --json`) + `health-check.sh` in batches. Same batch/stop
+* `sandpodctl rollout-app-patch` - fleet Node/Python patch:
+  `sandpodctl update-node-runtimes` + `sandpodctl update-python-runtimes` once, then per
+  customer restart every port app (`sandpodctl reload-customer-app` per domain from
+  `sandpodctl list-sites --json`) + `sandpodctl health-check` in batches. Same batch/stop
   semantics as the PHP rollout. `--skip-node-update` / `--skip-python-update`
   / `--skip-update` re-run restarts without touching host trees.
   ```sh
-  sudo modules/monitoring-backup/scripts/rollout-app-patch.sh --batch-size 2
-  sudo modules/monitoring-backup/scripts/rollout-app-patch.sh --skip-python-update
+  sudo sandpodctl rollout-app-patch --batch-size 2
+  sudo sandpodctl rollout-app-patch --skip-python-update
   ```
-* `scripts/backup-customer.sh` - `tar` of `~/data` + `~/config` to
+* `sandpodctl backup-customer` - `tar` of `~/data` + `~/config` to
   `/var/backups/sandpod/<id>-<ts>.tar.gz`, keeps 7. Pair with
-  `host-mariadb/scripts/backup-site-db.sh` for a full site backup.
-* `scripts/resource-report.sh` - `podman stats` per registry customer plus
+  `sandpodctl backup-site-db` for a full site backup.
+* `sandpodctl resource-report` - `podman stats` per registry customer plus
   `DISK` (`report -p -b -h`: used/soft/hard) and `INODES` (`report -p -i -h`)
   columns joined by exact project name (== service user), fallback by numeric
   project id (== account UID). `quota-off`/`-` while accounting is off.
   `--json` prints a panel-parseable array (same convention as
-  `customer-apps/scripts/list-sites.sh --json`). `--xfs-report-file` /
+  `sandpodctl list-sites --json`). `--xfs-report-file` /
   `--xfs-inode-report-file` replay saved reports (repo-test hooks, offline use).
   Exit 1 when the registry is missing, 2 on bad arguments.
 
@@ -43,7 +43,7 @@
 * Host nginx: default `/var/log/nginx/*` with system `logrotate`. Keep 14 days
   (template: `../host-nginx/config/sandpod-logrotate.conf` →
   `/etc/logrotate.d/sandpod`).
-* Retention: 7 daily customer tars (pruned inside `backup-customer.sh --keep`)
+* Retention: 7 daily customer tars (pruned inside `sandpodctl backup-customer --keep`)
   + DB dumps; sync `/var/backups/sandpod` off-host.
 
 ## Systemd scheduling (templates, operator installs on host)
@@ -65,10 +65,10 @@ journalctl -u sandpod-resource-report.service --since today  # JSON output
 * Disk quota: mechanism enforced by `host-storage` (XFS project per account,
   soft 8G/hard 10G default). Active after the `pquota` reboot; first boot
   re-applies limits via `host-storage/systemd/sandpod-quotas.service`
-  (custom quotas: re-run `set-customer-quota.sh` once).
-  `resource-report.sh` falls back to `du` until then. Retention/off-host sync
+  (custom quotas: re-run `sandpodctl set-customer-quota` once).
+  `sandpodctl resource-report` falls back to `du` until then. Retention/off-host sync
   thuộc ops/panel (ngoài scope `docs/scope.md` §3).
 * Alerting/paging: repo chỉ xuất dữ liệu (`resource-report --json` +
-  `health-check.sh`, hoặc `GET /v1/.../resources` qua panel-api);
+  `sandpodctl health-check`, hoặc `GET /v1/.../resources` qua panel-api);
   `sandpod-resource-report.timer` (hourly, xem `systemd/` ở trên) chỉ chạy
   cơ chế — ngưỡng page do ops/panel sở hữu.

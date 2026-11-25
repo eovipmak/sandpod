@@ -1,4 +1,4 @@
-// Package apps ports modules/customer-apps/scripts (lib.sh + 6 commands).
+// Package apps implements the customer-apps commands (site and port-app mechanism).
 package apps
 
 import (
@@ -20,7 +20,7 @@ type Ctx struct {
 	SupervisorDir string
 }
 
-// Load mirrors `source lib.sh`: validates, resolves home/uid, checks manager.
+// Load validates the service user and container, resolves home/uid, and checks the user manager.
 func Load(serviceUser, container string) (*Ctx, int) {
 	if !platform.ValidServiceUser(serviceUser) {
 		fmt.Fprintln(os.Stderr, "Invalid service user.")

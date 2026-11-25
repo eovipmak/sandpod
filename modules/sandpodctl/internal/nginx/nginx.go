@@ -147,11 +147,10 @@ server {
 		}
 		fmt.Printf("Wrote %s (%s -> 127.0.0.1:%s)\n", out, names, web)
 	}
-	if enforcing() {
+	if platform.SELinuxEnforcing() {
 		matches, _ := filepath.Glob(filepath.Join(outDir, "sandpod-*.conf"))
 		if len(matches) > 0 {
-			args := append([]string{"-F"}, matches...)
-			_ = exec.Command("restorecon", args...).Run()
+			_ = platform.Restorecon(false, matches...)
 		}
 	}
 	matches, _ := filepath.Glob(filepath.Join(outDir, "sandpod-*.conf"))
@@ -210,12 +209,4 @@ func envOr(k, def string) string {
 		return v
 	}
 	return def
-}
-
-func enforcing() bool {
-	if !platform.Have("getenforce") {
-		return false
-	}
-	out, err := exec.Command("getenforce").Output()
-	return err == nil && strings.TrimSpace(string(out)) == "Enforcing"
 }

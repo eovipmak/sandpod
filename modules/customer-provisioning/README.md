@@ -16,29 +16,29 @@ unprivileged host account per customer, rootless Quadlet units, `~/data` +
 
 ```sh
 # New customer 002: auto ports (18002/22202), quota 10G, start immediately:
-sudo modules/customer-provisioning/scripts/provision-customer.sh 002
+sudo sandpodctl provision-customer 002
 
 # Pin ports + key:
-sudo modules/customer-provisioning/scripts/provision-customer.sh 003 \
+sudo sandpodctl provision-customer 003 \
   --service-user svc-c003 --web-port 18003 --ssh-port 22203 \
   --ssh-key ~/.ssh/id_rsa.pub
 
 # Verify (pilot map fixtures):
-modules/customer-provisioning/scripts/health-check.sh 18002
+sandpodctl health-check 18002
 
 # Add/rotate a key later (container /home/customer is ephemeral):
-sudo modules/customer-provisioning/scripts/add-ssh-key.sh svc-c002 customer-002 ~/.ssh/id_rsa.pub
+sudo sandpodctl add-ssh-key svc-c002 customer-002 ~/.ssh/id_rsa.pub
 
 # Remove service, keep data (default). Add --delete-data / --delete-user to wipe:
-sudo modules/customer-provisioning/scripts/remove-customer.sh 002
+sudo sandpodctl remove-customer 002
 ```
 
-`provision-customer.sh` does: `useradd -s /sbin/nologin` (reuse if exists) ->
+`sandpodctl provision-customer` does: `useradd -s /sbin/nologin` (reuse if exists) ->
 `loginctl enable-linger` -> install `~/.config/containers/systemd/customer@.container`
 + symlink `customer@<id>.container` + `.container.d/10-instance.conf`
 (`Image` + `PublishPort 127.0.0.1:<web>:80 / <ssh>:22`) -> `~/data/public_html`
 + `~/config/nginx.conf` (kept if exists) -> `systemctl --user daemon-reload +
-restart/enable` -> optional `add-ssh-key.sh` -> append `/etc/sandpod/customers.tsv`
+restart/enable` -> optional `sandpodctl add-ssh-key` -> append `/etc/sandpod/customers.tsv`
 (`instance, service_user, container, web_port, ssh_port, image`).
 
 Resource caps: each customer is pinned in
@@ -62,7 +62,7 @@ are serialized with `flock` on `<registry>.lock`; pass
 `--registry <path>` to target a fixture TSV in repo tests
 (`SANDPOD_USED_PORTS="18001,18002"` fakes busy ports without `ss`).
 Quota: `--quota-gb N` (soft 80%) plus optional `--hard-inodes/--soft-inodes`
-forwarded to `host-storage/set-customer-quota.sh`.
+forwarded to `sandpodctl set-customer-quota`.
 
 ## Registry
 
@@ -82,11 +82,11 @@ printf '001\tsvc-c001\tcustomer-001\t18001\t22201\tlocalhost/sandpod/customer-ru
 ## Rollback
 
 * Provision failed pre-start: re-run same command (idempotent), or
-  `remove-customer.sh <id>` then retry.
+  `sandpodctl remove-customer <id>` then retry.
 * Wrong ports/image: edit `<unit>.container.d/10-instance.conf`, re-run
-  `provision-customer.sh <id>` with corrected flags (rewrites drop-in,
+  `sandpodctl provision-customer <id>` with corrected flags (rewrites drop-in,
   restarts unit).
-* Full wipe: `remove-customer.sh <id> --delete-data --delete-registry-entry`
+* Full wipe: `sandpodctl remove-customer <id> --delete-data --delete-registry-entry`
   (add `--delete-user` to drop the account; requires `--delete-data`).
 
 ## Gotchas

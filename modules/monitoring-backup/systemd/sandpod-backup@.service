@@ -22,4 +22,4 @@ After=network.target
 [Service]
 Type=oneshot
 User=root
-ExecStart=/opt/sandpod/repo/modules/monitoring-backup/scripts/backup-customer.sh %i
+ExecStart=/opt/sandpod/repo/modules/sandpodctl/sandpodctl backup-customer %i

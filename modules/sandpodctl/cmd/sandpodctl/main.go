@@ -1,13 +1,12 @@
-// Command sandpodctl is the single Go binary replacing all *.sh operator scripts.
+// Command sandpodctl is the single Go binary for all SandPod operator commands.
 //
-// Each subcommand keeps the exact argv contract of its bash predecessor so
-// panel-api can switch the command path without changing arguments:
+// Each subcommand keeps the argv contract of the bash scripts it replaced:
 //
 //	sandpodctl provision-customer 002 ...
 //	sandpodctl add-site svc-c001 customer-001 shop.example.com --php 8.3
 //
 // Busybox mode: when invoked via a symlink named <cmd>[.sh], it dispatches
-// to that subcommand (allows drop-in shims during migration).
+// to that subcommand.
 package main
 
 import (
@@ -73,7 +72,7 @@ var commands = []cmd{
 
 func usage() {
 	fmt.Fprintln(os.Stderr, "Usage: sandpodctl <command> [args...]")
-	fmt.Fprintln(os.Stderr, "Commands (1:1 with legacy modules/*/scripts/*.sh):")
+	fmt.Fprintln(os.Stderr, "Commands:")
 	for _, c := range commands {
 		fmt.Fprintf(os.Stderr, "  %-24s %s\n", c.name, c.usage)
 	}

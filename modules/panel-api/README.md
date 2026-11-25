@@ -2,8 +2,7 @@
 
 Daemon chạy **as root**, listen `127.0.0.1:8741`. Mọi endpoint chỉ gọi
 backend operator (`sh.py` là nơi duy nhất biết đường dẫn binary),
-không re-implement policy. `server.py` stdlib giữ lại làm fallback
-không-dependency; production dùng `app.py` (FastAPI).
+không re-implement policy. Chỉ còn một server: `app.py` (FastAPI).
 
 ## P2 — site ops sync (idempotent)
 
@@ -99,10 +98,9 @@ Token: `curl -H "Authorization: Bearer $(cat /etc/sandpod/panel-api.token)" ...`
 
 ```sh
 /tmp/sapi-venv/bin/python -m pytest modules/panel-api/tests/ -q  # 33 passed: api/contract/p2-hardening/p4-ops/p3-jobs
-for sh in $(find modules -name "*.sh"); do bash -n "$sh"; done
 make -C modules/sandpodctl build  # backend binary cho daemon (SANDPOD_SANDPODCTL)
 /tmp/sapi-venv/bin/python -m py_compile modules/panel-api/*.py
 ```
 
-Backend: daemon gọi `sandpodctl <subcommand>` (cùng argv như `.sh` cũ).
-Rollback khẩn: `SANDPOD_BACKEND=scripts` để gọi lại `modules/*/scripts/*.sh`.
+Backend: daemon gọi `sandpodctl <subcommand>` (argv giữ nguyên như script bash cũ).
+Rollback: checkout commit trước refactor (bash scripts đã bị xóa).

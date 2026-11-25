@@ -3,7 +3,7 @@ info:
   title: SandPod Panel API (mechanism only)
   version: 4.0.0
   description: |
-    Thin wrap over modules/*/scripts/*.sh. No policy (domains, quotas,
+    Thin wrap over the sandpodctl binary (modules/sandpodctl). No policy (domains, quotas,
     billing, TLS, DNS). Sync ops <5s return directly; long ops return
     202 + jobId, poll GET /v1/jobs/{id}. Script exit 0->2xx, 2->400, 1->500.
     Async endpoints return 409 when the instance is busy or the global job
@@ -35,7 +35,7 @@ paths:
                 type: array
                 items: { $ref: '#/components/schemas/Customer' }
     post:
-      summary: Provision customer (async, wraps provision-customer.sh)
+      summary: Provision customer (async, wraps sandpodctl provision-customer)
       parameters:
         - { name: dry_run, in: query, required: false, schema: { type: boolean, default: false } }
       requestBody:
@@ -54,7 +54,7 @@ paths:
         '413': { description: 'body over 1 MiB' }
   /customers/{id}/sites:
     get:
-      summary: List sites (wraps list-sites.sh --json)
+      summary: List sites (wraps sandpodctl list-sites --json)
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, pattern: '^[0-9]{3}$' } }
       responses:
@@ -64,7 +64,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SiteList' }
     post:
-      summary: Add PHP site (wraps add-site.sh)
+      summary: Add PHP site (wraps sandpodctl add-site)
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
         - { name: dry_run, in: query, required: false, schema: { type: boolean, default: false } }
@@ -83,7 +83,7 @@ paths:
         '500': { $ref: '#/components/responses/RuntimeFail' }
   /customers/{id}/sites/{domain}:
     patch:
-      summary: Set PHP version (wraps set-php-version.sh)
+      summary: Set PHP version (wraps sandpodctl set-php-version)
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
         - { name: domain, in: path, required: true, schema: { type: string } }
@@ -101,7 +101,7 @@ paths:
         '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/Ok' } } } }
         '400': { $ref: '#/components/responses/BadArgs' }
     delete:
-      summary: Remove site (wraps remove-site.sh; ?delete_data=true appends --delete-data, query only, no body)
+      summary: Remove site (wraps sandpodctl remove-site; ?delete_data=true appends --delete-data, query only, no body)
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
         - { name: domain, in: path, required: true, schema: { type: string } }
@@ -112,7 +112,7 @@ paths:
         '400': { $ref: '#/components/responses/BadArgs' }
   /customers/{id}:
     delete:
-      summary: Remove customer (async, wraps remove-customer.sh; query flags, no body)
+      summary: Remove customer (async, wraps sandpodctl remove-customer; query flags, no body)
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, pattern: '^[0-9]{3}$' } }
         - { name: delete_data, in: query, required: false, schema: { type: boolean, default: false } }
@@ -125,7 +125,7 @@ paths:
         '409': { description: 'instance busy or global job cap reached' }
   /customers/{id}/port-apps:
     post:
-      summary: Add port app (wraps add-port-app.sh; panel allocates port 3000-3999)
+      summary: Add port app (wraps sandpodctl add-port-app; panel allocates port 3000-3999)
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
         - { name: dry_run, in: query, required: false, schema: { type: boolean, default: false } }
@@ -139,7 +139,7 @@ paths:
         '400': { $ref: '#/components/responses/BadArgs' }
   /customers/{id}/port-apps/{domain}:
     delete:
-      summary: Remove port app (wraps remove-port-app.sh; ?delete_data=true appends --delete-data, query only, no body)
+      summary: Remove port app (wraps sandpodctl remove-port-app; ?delete_data=true appends --delete-data, query only, no body)
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
         - { name: domain, in: path, required: true, schema: { type: string } }
@@ -150,7 +150,7 @@ paths:
         '400': { $ref: '#/components/responses/BadArgs' }
   /customers/{id}/reload:
     post:
-      summary: Reload FPM minor or port app (wraps reload-customer-php/app.sh)
+      summary: Reload FPM minor or port app (wraps reload-customer-php / reload-customer-app)
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
         - { name: dry_run, in: query, required: false, schema: { type: boolean, default: false } }
@@ -169,14 +169,14 @@ paths:
         '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/Ok' } } } }
   /customers/{id}/resources:
     get:
-      summary: Resource report (wraps resource-report.sh --json)
+      summary: Resource report (wraps sandpodctl resource-report --json)
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
       responses:
         '200': { description: ok, content: { application/json: { schema: { type: object } } } }
   /customers/{id}/ssh-keys:
     post:
-      summary: Add SSH key (wraps add-ssh-key.sh; panel owns who gets access)
+      summary: Add SSH key (wraps sandpodctl add-ssh-key; panel owns who gets access)
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
         - { name: dry_run, in: query, required: false, schema: { type: boolean, default: false } }
@@ -190,11 +190,11 @@ paths:
               properties:
                 publicKey: { type: string, description: 'ssh-ed25519/rsa/ecdsa/dss <base64> [comment], single line, max 4095 chars' }
       responses:
-        '202': { description: queued (async job, wraps add-ssh-key.sh), content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
+        '202': { description: queued (async job, wraps sandpodctl add-ssh-key), content: { application/json: { schema: { $ref: '#/components/schemas/Job' } } } }
         '409': { description: 'instance busy or global job cap reached (fix-forward, re-run after)' }
   /customers/{id}/backups:
     post:
-      summary: Backup customer (async, wraps backup-customer.sh)
+      summary: Backup customer (async, wraps sandpodctl backup-customer)
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
         - { name: dry_run, in: query, required: false, schema: { type: boolean, default: false } }
@@ -203,7 +203,7 @@ paths:
         '409': { description: 'instance busy or global job cap reached (fix-forward, re-run after)' }
   /dbs:
     post:
-      summary: Create site DB (async, wraps create-site-db.sh; creds returned once, never stored)
+      summary: Create site DB (async, wraps sandpodctl create-site-db; creds returned once, never stored)
       parameters:
         - { name: dry_run, in: query, required: false, schema: { type: boolean, default: false } }
       requestBody:
@@ -223,7 +223,7 @@ paths:
         '413': { description: 'body over 1 MiB' }
   /host-nginx/reload:
     post:
-      summary: Regen + reload host nginx in ONE job (chain generate-site-conf.sh then reload-host-nginx.sh; 409 if busy)
+      summary: Regen + reload host nginx in ONE job (chain sandpodctl generate-site-conf then sandpodctl reload-host-nginx; 409 if busy)
       parameters:
         - { name: dry_run, in: query, required: false, schema: { type: boolean, default: false } }
       responses:
@@ -231,7 +231,7 @@ paths:
         '409': { description: 'instance busy or global job cap reached (fix-forward, re-run after)' }
   /rollouts/php:
     post:
-      summary: Fleet PHP patch rollout (async, wraps rollout-php-patch.sh)
+      summary: Fleet PHP patch rollout (async, wraps sandpodctl rollout-php-patch)
       parameters:
         - { name: dry_run, in: query, required: false, schema: { type: boolean, default: false } }
       requestBody:
@@ -243,7 +243,7 @@ paths:
         '409': { description: 'instance busy or global job cap reached (fix-forward, re-run after)' }
   /rollouts/app:
     post:
-      summary: Fleet Node/Python rollout (async, wraps rollout-app-patch.sh)
+      summary: Fleet Node/Python rollout (async, wraps sandpodctl rollout-app-patch)
       parameters:
         - { name: dry_run, in: query, required: false, schema: { type: boolean, default: false } }
       requestBody:

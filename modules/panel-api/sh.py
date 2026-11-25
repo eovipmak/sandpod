@@ -1,15 +1,14 @@
 """One place that knows how to call the operator backend. No policy here.
 
-Default backend is the Go binary `sandpodctl` (one subcommand per legacy
-script, same argv). Rollback: SANDPOD_BACKEND=scripts uses the legacy
-modules/*/scripts/*.sh paths with identical arguments.
+The backend is the Go binary `sandpodctl` (one subcommand per operation,
+argv contract unchanged from the retired bash scripts).
 """
 import os
 import subprocess
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-# Logical op -> sandpodctl subcommand (1:1 with legacy scripts, same argv).
+# Logical op -> sandpodctl subcommand.
 SUBCOMMANDS = {
     "provision": "provision-customer",
     "remove": "remove-customer",
@@ -38,35 +37,6 @@ SUBCOMMANDS = {
     "quota_enable": "enable-project-quota",
 }
 
-# Legacy script paths (rollback only, SANDPOD_BACKEND=scripts).
-SCRIPTS = {
-    "provision": "customer-provisioning/scripts/provision-customer.sh",
-    "remove": "customer-provisioning/scripts/remove-customer.sh",
-    "add_key": "customer-provisioning/scripts/add-ssh-key.sh",
-    "health": "customer-provisioning/scripts/health-check.sh",
-    "add_site": "customer-apps/scripts/add-site.sh",
-    "set_php": "customer-apps/scripts/set-php-version.sh",
-    "remove_site": "customer-apps/scripts/remove-site.sh",
-    "list_sites": "customer-apps/scripts/list-sites.sh",
-    "add_port": "customer-apps/scripts/add-port-app.sh",
-    "remove_port": "customer-apps/scripts/remove-port-app.sh",
-    "reload_php": "shared-runtimes/scripts/reload-customer-php.sh",
-    "reload_app": "shared-runtimes/scripts/reload-customer-app.sh",
-    "mkdb": "host-mariadb/scripts/create-site-db.sh",
-    "backup_db": "host-mariadb/scripts/backup-site-db.sh",
-    "restore_db": "host-mariadb/scripts/restore-site-db.sh",
-    "gen_nginx": "host-nginx/scripts/generate-site-conf.sh",
-    "reload_nginx": "host-nginx/scripts/reload-host-nginx.sh",
-    "backup": "monitoring-backup/scripts/backup-customer.sh",
-    "report": "monitoring-backup/scripts/resource-report.sh",
-    "rollout_php": "monitoring-backup/scripts/rollout-php-patch.sh",
-    "rollout_app": "monitoring-backup/scripts/rollout-app-patch.sh",
-    "quota_set": "host-storage/scripts/set-customer-quota.sh",
-    "quota_report": "host-storage/scripts/quota-report.sh",
-    "quota_reapply": "host-storage/scripts/reapply-quotas.sh",
-    "quota_enable": "host-storage/scripts/enable-project-quota.sh",
-}
-
 
 def sandpodctl_bin() -> str:
     """Binary path: explicit env wins, else repo checkout, else /usr/local/bin."""
@@ -79,14 +49,7 @@ def sandpodctl_bin() -> str:
     return "/usr/local/bin/sandpodctl"
 
 
-def script_path(name: str) -> str:
-    base = os.environ.get("SANDPOD_SCRIPT_DIR", os.path.join(REPO_ROOT, "modules"))
-    return os.path.join(base, SCRIPTS[name])
-
-
 def build_cmd(name: str, args: list) -> list:
-    if os.environ.get("SANDPOD_BACKEND") == "scripts":
-        return [script_path(name)] + [str(a) for a in args]
     return [sandpodctl_bin(), SUBCOMMANDS[name]] + [str(a) for a in args]
 
 

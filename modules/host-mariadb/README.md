@@ -31,11 +31,11 @@ environment. `REQUIRE SSL` stays off until the panel owns cert distribution
 
 ```sh
 sudo systemctl enable --now mariadb
-sudo modules/host-mariadb/scripts/create-site-db.sh shop_db shop_user
+sudo sandpodctl create-site-db shop_db shop_user
 # -> prints DB_HOST/DB_NAME/DB_USER/DB_PASS once; panel vaults it.
 
-sudo modules/host-mariadb/scripts/backup-site-db.sh shop_db
-sudo modules/host-mariadb/scripts/restore-site-db.sh shop_db /var/backups/sandpod/shop_db-<ts>.sql.gz
+sudo sandpodctl backup-site-db shop_db
+sudo sandpodctl restore-site-db shop_db /var/backups/sandpod/shop_db-<ts>.sql.gz
 ```
 
 Grants are limited to one database (`SELECT/INSERT/UPDATE/DELETE/CREATE/
@@ -43,7 +43,7 @@ DROP/INDEX/ALTER/...`). No cross-site access by construction.
 
 ## Backup policy (minimum before production)
 
-* Nightly `backup-site-db.sh` per site + `tar` of `~/data` + `~/config`
+* Nightly `sandpodctl backup-site-db` per site + `tar` of `~/data` + `~/config`
   (see `monitoring-backup/systemd/`); retain 7 daily + 4 weekly, test-restore monthly.
   Schedule per DB (names are panel-owned):
   ```sh
@@ -52,7 +52,7 @@ DROP/INDEX/ALTER/...`). No cross-site access by construction.
   sudo systemctl enable --now 'sandpod-db-backup@shop_db.timer'
   ```
 * Dumps go to `/var/backups/sandpod` (`0700`, integrity-checked with
-  `gzip -t`); `restore-site-db.sh` validates the dump, backs up the live DB
+  `gzip -t`); `sandpodctl restore-site-db` validates the dump, backs up the live DB
   first, and creates a missing DB. Sync off-host.
 
 ## Status

@@ -257,31 +257,25 @@ func ResourceReport(args []string) int {
 		}
 	}
 	statsFor := func(user, cont string) string {
-		uidOut, err := exec.Command("id", "-u", user).Output()
+		home, uid, err := platform.LookupAccount(user)
 		if err != nil {
 			return "no such user"
 		}
-		uid := strings.TrimSpace(string(uidOut))
-		if _, err := os.Stat("/run/user/" + uid); err != nil {
+		if !platform.UserManagerUp(uid) {
 			return "user manager down"
 		}
-		home, _, _ := platform.LookupAccount(user)
-		c := exec.Command("runuser", "-u", user, "--", "env",
-			"HOME="+home, "XDG_RUNTIME_DIR=/run/user/"+uid,
-			"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/"+uid+"/bus",
-			"podman", "stats", "--no-stream", "--format", "{{.CPUPerc}} {{.MemUsage}}", cont)
-		out, err := c.Output()
+		out, err := platform.OutputAsUser(user, home, uid, "podman", "stats", "--no-stream", "--format", "{{.CPUPerc}} {{.MemUsage}}", cont)
 		if err != nil {
 			return "stopped stopped"
 		}
-		return strings.TrimSpace(string(out))
+		return strings.TrimSpace(out)
 	}
 	uidFor := func(user string) string {
-		out, err := exec.Command("id", "-u", user).Output()
+		_, uid, err := platform.LookupAccount(user)
 		if err != nil {
 			return ""
 		}
-		return strings.TrimSpace(string(out))
+		return strconv.Itoa(uid)
 	}
 	if jsonOut {
 		type item struct {

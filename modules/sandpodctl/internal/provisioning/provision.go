@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"sandpodctl/internal/platform"
+	"sandpodctl/internal/storage"
 )
 
 // Provision ports provision-customer.sh (rootless account + Quadlet + data/config).
@@ -235,8 +236,8 @@ func Provision(args []string) int {
 	fmt.Printf("Provisioning instance=%s user=%s container=%s web=127.0.0.1:%s ssh=127.0.0.1:%s\n", inst, svc, container, webPort, sshPort)
 
 	// 1. Service account.
-	if exec.Command("id", svc).Run() != nil {
-		if err := exec.Command("useradd", "--create-home", "--shell", "/sbin/nologin", svc).Run(); err != nil {
+	if _, _, err := platform.LookupAccount(svc); err != nil {
+		if err := platform.Run("useradd", "--create-home", "--shell", "/sbin/nologin", svc); err != nil {
 			fmt.Fprintf(os.Stderr, "useradd failed: %v\n", err)
 			return 1
 		}
@@ -424,23 +425,14 @@ IOWeight=%s
 		if softGB < 1 {
 			softGB = 1
 		}
-		quotaBin := filepath.Join(repoRoot, "modules/host-storage/scripts/set-customer-quota.sh")
-		if _, err := os.Stat(quotaBin); err == nil {
-			qargs := []string{quotaBin, svc, "--hard-gb", quotaGB, "--soft-gb", strconv.Itoa(softGB)}
-			if hi, _ := strconv.Atoi(hardInodes); hi > 0 {
-				qargs = append(qargs, "--hard-inodes", hardInodes)
-			}
-			if si, _ := strconv.Atoi(softInodes); si > 0 {
-				qargs = append(qargs, "--soft-inodes", softInodes)
-			}
-			c := exec.Command(qargs[0], qargs[1:]...)
-			c.Stdout = os.Stdout
-			c.Stderr = os.Stderr
-			if err := c.Run(); err != nil {
-				fmt.Fprintln(os.Stderr, "NOTE: quota not enforced yet (see host-storage README).")
-			}
-		} else {
-			// Go-native fallback when checkout layout differs: warn only.
+		qargs := []string{svc, "--hard-gb", quotaGB, "--soft-gb", strconv.Itoa(softGB)}
+		if hi, _ := strconv.Atoi(hardInodes); hi > 0 {
+			qargs = append(qargs, "--hard-inodes", hardInodes)
+		}
+		if si, _ := strconv.Atoi(softInodes); si > 0 {
+			qargs = append(qargs, "--soft-inodes", softInodes)
+		}
+		if storage.SetCustomerQuota(qargs) != 0 {
 			fmt.Fprintln(os.Stderr, "NOTE: quota not enforced yet (see host-storage README).")
 		}
 	}
