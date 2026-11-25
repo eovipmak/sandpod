@@ -44,7 +44,7 @@ restart/enable` -> optional `sandpodctl add-ssh-key` -> append `/etc/sandpod/cus
 Resource caps: each customer is pinned in
 `customer@<id>.container.d/20-resources.conf` (`--cpus 1.0` / `--memory 1g` /
 `--io-weight 100` defaults): podman-level `Memory` + `PidsLimit=512` +
-`PodmanArgs --memory-swap=<mem> --cpus --blkio-weight --memory-swappiness=0`,
+`PodmanArgs --memory-swap=<mem> --cpus`,
 and systemd-level `CPUQuota` (= cpus x 100%) + `CPUWeight=100` + `MemoryHigh`
 (90% of Max) + `MemoryMax` + `MemorySwapMax=0` + `TasksMax=1024` +
 `IOWeight`. A busy customer is throttled/OOM-killed inside its own cgroup and

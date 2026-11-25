@@ -93,7 +93,14 @@ func AsUser(serviceUser, home string, uid int, prog string, args ...string) *exe
 		fmt.Sprintf("DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus", uid),
 		prog,
 	}
-	return exec.Command("runuser", append(full, args...)...)
+	c := exec.Command("runuser", append(full, args...)...)
+	// runuser keeps the caller's cwd; when an operator runs sandpodctl from
+	// root's home the service account cannot chdir there. Pin it to the home
+	// we already resolved for the account.
+	if home != "" {
+		c.Dir = home
+	}
+	return c
 }
 
 // RunAsUser runs prog as the account, wiring stdio through.

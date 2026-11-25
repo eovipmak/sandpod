@@ -49,7 +49,10 @@ sudo systemctl enable --now sandpod-quotas.service
 ## Conventions
 
 * Project name = service user, id = its UID - no extra allocator needed.
-  Registries: `/etc/projid` (`<uid>:<user>`), `/etc/projects` (`<user>:<home>`).
+  Registries follow `projid(5)`/`projects(5)`: `/etc/projid` (`<user>:<uid>`)
+  and `/etc/projects` (`<uid>:<home>`). `sandpodctl set-customer-quota`
+  migrates legacy `<uid>:<user>` / `<user>:<home>` entries in place, so
+  `xfs_quota report -p` prints the project name instead of `#<id>`.
 * Quotas are whole GB; soft <= hard. Exceeding soft warns, exceeding hard
   fails writes (`EDQUOT`/`ENOSPC` to the customer processes).
 * Inode limits default to unset (filesystem default, millions). Pass

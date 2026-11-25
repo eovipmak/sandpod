@@ -24,7 +24,7 @@
   - [x] Thêm 8.6 song song (php-fpm conf + supervisord + nginx map + reload/rollout) — done: `2026-11-20` (FPM `127.0.0.1:9086`, giữ nguyên 8.2-8.5, không xóa bản nào)
   - [x] Giữ 8.2 cho KH lựa chọn (bỏ kế hoạch xóa) — quyết định: `2026-11-20`
 - [x] **2.5 Khóa CPU/RAM/IO theo customer** — done: `2026-11-23` (repo-only)
-  - [x] template `customer@.container`: podman-level (`Memory=1g`, `PidsLimit=512`, `PodmanArgs --memory-swap=1g --cpus=1.0 --blkio-weight=100 --memory-swappiness=0`) + systemd-level (`CPUQuota=100%`, `CPUWeight=100`, `MemoryHigh=900M`, `MemoryMax=1G`, `MemorySwapMax=0`, `TasksMax=1024`, `IOWeight=100`)
+  - [x] template `customer@.container`: podman-level (`Memory=1g`, `PidsLimit=512`, `PodmanArgs --memory-swap=1g --cpus=1.0`) + systemd-level (`CPUQuota=100%`, `CPUWeight=100`, `MemoryHigh=900M`, `MemoryMax=1G`, `MemorySwapMax=0`, `TasksMax=1024`, `IOWeight=100`) — `--memory-swappiness=0` and `--blkio-weight` dropped `2026-11-25` (crun+cgroupv2 rejects both rootless: no io.weight controller in the user slice; `MemorySwapMax=0` already disables swap, systemd `IOWeight` stays best-effort)
   - [x] provision `--cpus/--memory/--io-weight` (defaults = template), chốt theo instance vào `20-resources.conf` (re-run để đổi; khách cũ re-run để nhận)
   - [x] `resource-report.sh` in dòng limits mới (swap 0, TasksMax, IOWeight)
 - [x] **2.4 Provisioning cứng hơn** — done: `2026-11-23` (repo-only, không host/E2E)

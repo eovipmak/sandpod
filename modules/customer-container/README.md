@@ -76,8 +76,7 @@ assign unused ports. The current pilot uses:
 - limits: 1 CPU (`CPUQuota=100%` + `--cpus=1.0`), 1 GiB RAM, swap 0
   (`Memory=1g` + `--memory-swap=1g` + `MemorySwapMax=0`, reclaim from
   `MemoryHigh=900M`), 512 processes (`PidsLimit=512`, `TasksMax=1024`
-  service-wide), fair-share `CPUWeight=100` / `IOWeight=100` /
-  `--blkio-weight=100`. Pinned per instance in `20-resources.conf`
+  service-wide), fair-share `CPUWeight=100` / `IOWeight=100`. Pinned per instance in `20-resources.conf`
   (see customer-provisioning); re-run provision to pick up template changes.
 
 Both ports are loopback-only. The image disables SSH password authentication;

@@ -15,4 +15,9 @@ func TestAsUserArgs(t *testing.T) {
 	if !reflect.DeepEqual(c.Args, want) {
 		t.Fatalf("AsUser args = %v\nwant %v", c.Args, want)
 	}
+	// runuser keeps the caller's cwd; AsUser must pin it to the account home
+	// so callers running from root's home don't fail with "cannot chdir".
+	if c.Dir != "/home/svc-c001" {
+		t.Fatalf("AsUser Dir = %q, want /home/svc-c001", c.Dir)
+	}
 }

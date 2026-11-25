@@ -24,10 +24,11 @@ User=0:0
 # delegation is unavailable on the host):
 Memory=1g
 PidsLimit=512
-# --memory-swap=<memory> disables container swap; swappiness=0 avoids swap
-# IO storms. --cpus mirrors [Service] CPUQuota below. Equal --blkio-weight
-# on every customer means equal shares when the disk is contended.
-PodmanArgs=--memory-swap=1g --cpus=1.0 --blkio-weight=100 --memory-swappiness=0
+# --memory-swap=<memory> disables container swap. --cpus mirrors [Service]
+# CPUQuota below. IO weight is applied by systemd (IOWeight=100); podman's
+# --blkio-weight is omitted because the rootless user slice does not always
+# delegate the cgroup v2 io controller (crun then fails to open io.weight).
+PodmanArgs=--memory-swap=1g --cpus=1.0
 
 [Service]
 Restart=always

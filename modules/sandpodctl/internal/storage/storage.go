@@ -193,26 +193,20 @@ func QuotaReport(args []string) int {
 		}
 		return 0
 	}
-	// Accounting on: parse /etc/projid ids then xfs_quota report.
-	var ids []string
-	if raw, err := os.ReadFile("/etc/projid"); err == nil {
-		for _, l := range strings.Split(string(raw), "\n") {
-			if i := strings.Index(l, ":"); i > 0 {
-				ids = append(ids, "^#"+regexp.QuoteMeta(strings.TrimSpace(l[:i]))+"$")
-			}
-		}
-	}
-	_ = ids
+	// Accounting on: parse /etc/projid then xfs_quota report. With a canonical
+	// projid file xfs_quota prints project names; with a broken one it prints
+	// `#<id>`. Keep whichever key the report actually uses.
 	out, err := exec.Command("xfs_quota", "-x", "-c", "report -p -h", "/").Output()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	idSet := map[string]bool{}
+	keep := map[string]bool{}
 	if raw, err := os.ReadFile("/etc/projid"); err == nil {
 		for _, l := range strings.Split(string(raw), "\n") {
-			if i := strings.Index(l, ":"); i > 0 {
-				idSet["#"+strings.TrimSpace(l[:i])] = true
+			if name, id, ok := parseProjidLine(l); ok {
+				keep[name] = true
+				keep["#"+id] = true
 			}
 		}
 	}
@@ -228,7 +222,7 @@ func QuotaReport(args []string) int {
 		if len(f) == 0 {
 			continue
 		}
-		if idSet[f[0]] {
+		if keep[f[0]] {
 			fmt.Println(l)
 		}
 	}
@@ -271,11 +265,8 @@ func ReapplyQuotas(args []string) int {
 	}
 	if raw, err := os.ReadFile("/etc/projid"); err == nil {
 		for _, l := range strings.Split(string(raw), "\n") {
-			if i := strings.Index(l, ":"); i >= 0 {
-				name := strings.TrimSpace(l[i+1:])
-				if name != "" {
-					users[name] = true
-				}
+			if name, _, ok := parseProjidLine(l); ok {
+				users[name] = true
 			}
 		}
 	}
@@ -377,37 +368,13 @@ func SetCustomerQuota(args []string) int {
 		fmt.Fprintln(os.Stderr, "No home dir.")
 		return 1
 	}
-	// /etc/projid + /etc/projects
+	// /etc/projid + /etc/projects use the projid(5)/projects(5) layout:
+	// /etc/projid = <name>:<id>, /etc/projects = <id>:<path>. Legacy
+	// <id>:<name> / <name>:<path> entries are migrated in place.
 	_ = touch("/etc/projid")
 	_ = touch("/etc/projects")
-	upsertLine("/etc/projid", projid+":"+svc, func(l string) bool {
-		return regexp.MustCompile(`^` + projid + `:` + regexp.QuoteMeta(svc) + `$`).MatchString(l)
-	}, func(existing []string) []string {
-		var out []string
-		for _, l := range existing {
-			if regexp.MustCompile(`^(` + projid + `:|[^:]+:` + regexp.QuoteMeta(svc) + `$)`).MatchString(l) {
-				continue
-			}
-			out = append(out, l)
-		}
-		out = append(out, projid+":"+svc)
-		sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
-		return out
-	})
-	upsertLine("/etc/projects", svc+":"+home, func(l string) bool {
-		return l == svc+":"+home
-	}, func(existing []string) []string {
-		var out []string
-		for _, l := range existing {
-			if strings.HasPrefix(l, svc+":") {
-				continue
-			}
-			out = append(out, l)
-		}
-		out = append(out, svc+":"+home)
-		sort.Strings(out)
-		return out
-	})
+	rewriteCanonical("/etc/projid", dropProjidEntry(svc, projid), svc+":"+projid)
+	rewriteCanonical("/etc/projects", dropProjectsEntry(svc, projid, home), projid+":"+home)
 	// Tag the tree.
 	tag := exec.Command("xfs_quota", "-x", "-c", "project -s -p "+home+" "+projid, "/")
 	tagOut, _ := tag.CombinedOutput()
@@ -461,31 +428,93 @@ func SetCustomerQuota(args []string) int {
 	return 0
 }
 
+// projIDRe matches a numeric project id; projNameRe matches a SandPod
+// service-user project name.
+var (
+	projIDRe   = regexp.MustCompile(`^[0-9]+$`)
+	projNameRe = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
+)
+
+// parseProjidLine accepts the canonical projid(5) layout `<name>:<id>` and the
+// legacy SandPod layout `<id>:<name>`. Both are migrated to canonical on the
+// next set-customer-quota run.
+func parseProjidLine(line string) (name, id string, ok bool) {
+	t := strings.TrimSpace(line)
+	if t == "" || strings.HasPrefix(t, "#") {
+		return "", "", false
+	}
+	i := strings.Index(t, ":")
+	if i <= 0 || i >= len(t)-1 {
+		return "", "", false
+	}
+	a, b := strings.TrimSpace(t[:i]), strings.TrimSpace(t[i+1:])
+	if projNameRe.MatchString(a) && projIDRe.MatchString(b) {
+		return a, b, true
+	}
+	if projIDRe.MatchString(a) && projNameRe.MatchString(b) {
+		return b, a, true
+	}
+	return "", "", false
+}
+
+// dropProjidEntry removes any line describing this project, in either layout.
+func dropProjidEntry(svc, id string) func(string) bool {
+	return func(line string) bool {
+		name, pid, ok := parseProjidLine(line)
+		return ok && (name == svc || pid == id)
+	}
+}
+
+// dropProjectsEntry removes the project path in either layout (`<id>:<path>`
+// canonically, `<name>:<path>` for legacy files) plus stale paths for the
+// account. `projects(5)` keys on the path, so a name left behind would keep a
+// second project entry alive.
+func dropProjectsEntry(svc, id, home string) func(string) bool {
+	return func(line string) bool {
+		t := strings.TrimSpace(line)
+		if t == "" || strings.HasPrefix(t, "#") {
+			return false
+		}
+		i := strings.Index(t, ":")
+		if i <= 0 || i >= len(t)-1 {
+			return false
+		}
+		a, b := strings.TrimSpace(t[:i]), strings.TrimSpace(t[i+1:])
+		if b == home {
+			return true
+		}
+		return a == svc || a == id
+	}
+}
+
+// mergeCanonical drops stale entries, appends the canonical line and keeps the
+// file sorted. It is pure so both the writer and tests can use it.
+func mergeCanonical(lines []string, drop func(string) bool, add string) []string {
+	var out []string
+	for _, l := range lines {
+		if strings.TrimSpace(l) == "" || drop(l) {
+			continue
+		}
+		out = append(out, l)
+	}
+	out = append(out, add)
+	sort.Strings(out)
+	return out
+}
+
+func rewriteCanonical(path string, drop func(string) bool, add string) {
+	raw, _ := os.ReadFile(path)
+	lines := strings.Split(strings.TrimRight(string(raw), "\n"), "\n")
+	merged := mergeCanonical(lines, drop, add)
+	_ = os.WriteFile(path, []byte(strings.Join(merged, "\n")+"\n"), 0644)
+}
+
 func touch(p string) error {
 	f, err := os.OpenFile(p, os.O_CREATE|os.O_RDONLY, 0644)
 	if err != nil {
 		return err
 	}
 	return f.Close()
-}
-
-func upsertLine(path, want string, has func(string) bool, rebuild func([]string) []string) {
-	raw, _ := os.ReadFile(path)
-	text := ""
-	if raw != nil {
-		text = string(raw)
-	}
-	lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
-	if len(lines) == 1 && lines[0] == "" {
-		lines = nil
-	}
-	for _, l := range lines {
-		if has(l) {
-			return
-		}
-	}
-	lines = rebuild(lines)
-	_ = os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0644)
 }
 
 func orQ(s string) string {

@@ -284,7 +284,7 @@ func Provision(args []string) int {
 [Container]
 Memory=%s
 PidsLimit=512
-PodmanArgs=--memory-swap=%s --cpus=%s --blkio-weight=%s --memory-swappiness=0
+PodmanArgs=--memory-swap=%s --cpus=%s
 
 [Service]
 CPUQuota=%d%%
@@ -294,7 +294,7 @@ MemoryMax=%s
 MemorySwapMax=0
 TasksMax=1024
 IOWeight=%s
-`, cpus, memory, ioWeight, memory, memory, cpus, ioWeight, cpuPct, memHigh, memSys, ioWeight)
+`, cpus, memory, ioWeight, memory, memory, cpus, cpuPct, memHigh, memSys, ioWeight)
 	if err := os.WriteFile(filepath.Join(dropinDir, "20-resources.conf"), []byte(res20), 0644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -341,7 +341,11 @@ IOWeight=%s
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
-		_ = platform.RunAsUser(svc, home, uid, "systemctl", "--user", "enable", "customer@"+inst+".service")
+		// Quadlet units are generated, so `enable` always reports
+		// "transient or generated"; linger + default.target already start it.
+		// Keep it best-effort and quiet so operators don't read it as failure.
+		enable := platform.AsUser(svc, home, uid, "systemctl", "--user", "enable", "customer@"+inst+".service")
+		_, _ = enable.CombinedOutput()
 		fmt.Printf("Started customer@%s.service\n", inst)
 	} else {
 		fmt.Println("Skipped start (--skip-start).")
