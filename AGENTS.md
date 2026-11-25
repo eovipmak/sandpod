@@ -18,7 +18,8 @@ Build image **as the rootless service account**, from `modules/customer-containe
 podman build -t localhost/sandpod/customer-runtime:node-shared .
 ```
 
-Pilot `001` stays pinned to `:pilot`; new customers default to `:node-shared`.
+All customers run `localhost/sandpod/customer-runtime:node-shared`; the legacy
+`:pilot` tag was retired after `001`/`002` migrated (2026-11-25).
 
 Per customer: dedicated unprivileged host account with own Podman storage + lingering user manager. Automated by `sandpodctl provision-customer` (manual equivalent: install template + instance symlink (`customer@001.container`) + `.container.d/` drop-in under `~/.config/containers/systemd/`, create `~/data` + `~/config`, copy `config/nginx.conf` → `~/config/nginx.conf`, then:
 

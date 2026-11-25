@@ -46,4 +46,4 @@
 ## Thứ tự thực hiện (bắt buộc)
 
 1. `3.1` trước `2.x` (đóng băng tên mount/port/program) — đã xong.
-2. `2.1` trên image tag mới (`customer-runtime:node-shared`), giữ tag `pilot` cho customer cũ.
+2. `2.1` trên image `customer-runtime:node-shared`; tag `pilot` đã bỏ hẳn sau khi `001/002` migrate `2026-11-25`.

@@ -10,7 +10,7 @@ unprivileged host account per customer, rootless Quadlet units, `~/data` +
 * `../customer-container/config/nginx.conf` - seed for `~/config/nginx.conf`.
 * `../customer-container/config/default-index.html` + `examples/pilot-site/index.php` - seed `public_html/`.
 * Image `localhost/sandpod/customer-runtime:node-shared` built beforehand
-  (pilot `001` stays pinned to `:pilot` in its drop-in/registry entry).
+  (all customers use it; `:pilot` is retired).
 
 ## Scripts (run as root)
 
@@ -71,12 +71,12 @@ Live mapping at `/etc/sandpod/customers.tsv` (see
 future `monitoring-backup`) iterate this file as `service_user -> container`
 source of truth - never probe containers.
 
-Pilot `001/svc-c001` predates this module; register it manually:
+Instance `001/svc-c001` predates this module; it can be (re)registered with
+the normal idempotent provision command (it now runs `:node-shared`):
 
 ```sh
-sudo mkdir -p /etc/sandpod
-printf '001\tsvc-c001\tcustomer-001\t18001\t22201\tlocalhost/sandpod/customer-runtime:pilot\n' \
-  | sudo tee -a /etc/sandpod/customers.tsv
+sudo sandpodctl provision-customer 001 --service-user svc-c001 \
+  --web-port 18001 --ssh-port 22201
 ```
 
 ## Rollback
@@ -95,7 +95,7 @@ printf '001\tsvc-c001\tcustomer-001\t18001\t22201\tlocalhost/sandpod/customer-ru
   terminates in the container (`AllowUsers customer`). That is intentional.
 * `/home/customer/.ssh/authorized_keys` lives in container storage, not in
   `~/data`. Re-apply keys after container recreate.
-* Pilot `svc-c001` still mounts an older `nginx.conf`
-  (`root /srv/customer/public`, no `$site_root`/php85 map). New customers get
-  the current template (`root $site_root`, `public_html`). Do not overwrite
-  pilot's config automatically - diff and migrate via control panel.
+* Existing customers keep their `nginx.conf` on re-provision (only missing
+  files are seeded). New customers get the current template
+  (`root $site_root` → `public_html`, php82..php86 map, `sites/*.conf`).
+  Compare/diff before migrating an old config via the control panel.

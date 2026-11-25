@@ -47,8 +47,9 @@ Build the image **as the rootless service account**, from this directory:
 podman build -t localhost/sandpod/customer-runtime:node-shared .
 ```
 
-Existing pilot `001` stays on the `:pilot` tag (pinned per-instance in its
-drop-in/registry entry); new customers default to `:node-shared`.
+All customers run the `:node-shared` tag (pinned per-instance in the drop-in
+and registry). The legacy `:pilot` tag was retired on 2026-11-25 after `001`
+and `002` migrated; do not rebuild or reference it.
 
 Before starting the image, build a current shared PHP runtime for each minor
 version listed in the runtime matrix; see the [shared-runtime guide](../shared-runtimes/README.md).

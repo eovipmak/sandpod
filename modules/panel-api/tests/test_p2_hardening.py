@@ -32,7 +32,7 @@ case "$cmd" in
 esac
 ''')
     with open(os.path.join(FIX, "customers.tsv"), "w") as fh:
-        fh.write("001\tsvc-c001\tcustomer-001\t18001\t22201\timg:pilot\n")
+        fh.write("001\tsvc-c001\tcustomer-001\t18001\t22201\timg:node-shared\n")
     os.environ["SANDPOD_SANDPODCTL"] = os.path.join(M, "sandpodctl")
     os.environ["SANDPOD_REGISTRY"] = os.path.join(FIX, "customers.tsv")
     os.environ["SANDPOD_TOKEN_FILE"] = os.path.join(FIX, "panel-api.token.absent")

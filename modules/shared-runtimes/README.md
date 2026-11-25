@@ -82,5 +82,5 @@ shared read-only host trees at `/opt/sandpod/node/<major>` (fnm-managed,
 stable symlinks hide fnm's versioned dirs from the panel). Python
 3.12/3.13/3.14 uses self-contained shared prefixes at
 `/opt/sandpod/python/<ver>`. Container images keep distro RPM fallbacks at
-the same `/usr/local/bin` names so old `pilot` containers without the new
-mounts still run.
+the same `/usr/local/bin` names so containers without the new mounts still
+run.

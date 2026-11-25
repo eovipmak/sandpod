@@ -6,9 +6,9 @@
 > Mỗi bullet cần 1 dòng `scope:` theo `docs/scope.md` §4 trước khi code.
 
 ## 0. Baseline cần giữ
-- Tag hiện tại `localhost/sandpod/customer-runtime:pilot` đang phục vụ customer `001`.
-  Mọi thay đổi làm trên image tag mới (vd `customer-runtime:node-shared`), giữ tag
-  `pilot` cho khách cũ (rule `docs/plan.md` Pha 2, mục "Thứ tự thực hiện" #2).
+- `localhost/sandpod/customer-runtime:node-shared` là image duy nhất được hỗ
+  trợ. Tag `:pilot` đã retire `2026-11-25` sau khi `001/002` migrate;
+  không build/ghi docs cho tag cũ nữa.
 
 ## 1. Việc làm (trên host, có E2E)
 - [x] Kiểm tra RPM fallback có thật cho mọi symlink trong `Containerfile:89-99`.
@@ -55,8 +55,9 @@
   sandpod-check-runtime-mounts`); quy trình operator lấy password + CI host
   vẫn pending.
   `scope: in-scope — image customer (scope.md §2); password end-user thuộc panel.`
-- [x] Full E2E matrix sau rebuild: DONE `2026-11-23` (tag `node-shared`,
-  `pilot` giữ nguyên; host có Remi 82-85 lúc test, 86 bổ sung sau
+- [x] Full E2E matrix sau rebuild: DONE `2026-11-23` (tag `node-shared`;
+  lúc test `:pilot` còn giữ, đã retire `2026-11-25` khi `001/002` migrate;
+  host có Remi 82-85 lúc test, 86 bổ sung sau
   (`install-php-runtimes.sh` lại, Remi đã có `php86-8.6.0`), `/opt/sandpod`
   + node/python trees cài `2026-11-23`):
   5× route → 8.2.36/8.3.37/8.4.28/8.5.13 đúng version, 86 → 502 + FPM FATAL rõ
@@ -66,10 +67,10 @@
   `sandpod-runtime-reload 8.3` (config-test + `USR2`) exit 0, vẫn phục vụ
   8.3.37 sau reload; bare-container static 200 + php 502. Container E2E đã
   `rm -f` dọn sạch.
-  Ghi nhận thêm `2026-11-23`: image `:pilot` đang chạy (001/002) không có
-  program `php86-fpm` và helper `sandpod-runtime-reload` cũ (tới 8.5) —
-  KH muốn 8.6 phải migrate image sang `:node-shared` (quyết định thuộc
-  panel, không tự migrate ở đây).
+  Ghi nhận thêm `2026-11-23`: image `:pilot` khi đó (001/002) không có
+  program `php86-fpm` và helper `sandpod-runtime-reload` cũ (tới 8.5);
+  đã migrate cả hai sang `:node-shared` `2026-11-25` và bỏ tag `:pilot`
+  (xem `plans/post-refactor-validation.md`).
   `scope: in-scope — verify mức host, làm sau khi có yêu cầu explicit.`
   với + không shared mount, SSH key inject, reload `USR2`/`restart`,
   health-check domain thật. (Nguyên si host-only, chưa đụng.)

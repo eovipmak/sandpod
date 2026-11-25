@@ -22,7 +22,7 @@ The panel may rely on these without inspecting image internals:
   `python3.12`/`python3.13`/`python3.14` (`python3` = 3.12).
   When the shared mounts are present the `/usr/local/bin` names resolve
   to `/opt/sandpod/node/<major>/bin/...` and
-  `/opt/sandpod/python/<ver>/bin/...`; when absent (old `pilot` tag)
+  `/opt/sandpod/python/<ver>/bin/...`; when the mounts are absent
   they fall back to the image RPM binaries at the same names.
 - Supervisord services: `sshd`, `crond`, `php82-fpm`, `php83-fpm`,
   `php84-fpm`, `php85-fpm`, `php86-fpm`, `nginx`.
@@ -81,7 +81,7 @@ spec bump):
   `/opt/sandpod/node` → read-only `/opt/sandpod/node` in the container
   (`node/22|24|26/bin/node`, `default -> 22`). Panel port-app commands
   should prefer the absolute shared path and fall back to the image
-  `node/node-*/npm*` when the mount is absent (old `pilot` tag).
+  `node/node-*/npm*` when the mount is absent.
 - Exit codes for all `customer-apps` / `customer-provisioning` scripts:
   `0` ok, `1` runtime failure (a `.bak` rollback was attempted),
   `2` bad arguments/input (bad domain, port, minor, missing flag).
@@ -116,10 +116,10 @@ Shared Node.js / Python runtimes. Everything in Spec v2 stays unchanged.
     stable across patch upgrades. Direct standalone tarballs (`--no-uv`)
     keep the same layout.
 - Extra mounts (read-only, host → container, same paths):
-  `/opt/sandpod/node` and `/opt/sandpod/python`. Old `pilot` images
-  work without them (image RPM fallback); new images use them when present
-  and fall back to the image RPMs when absent (same fallback, see E2E in
-  `plans/container-image.md`).
+  `/opt/sandpod/node` and `/opt/sandpod/python`. Images without the mounts
+  still work (image RPM fallback); images with them use the shared trees
+  and fall back to the image RPMs when a tree is absent (same fallback, see
+  E2E in `plans/container-image.md`).
 - Panel port-app commands should prefer the absolute shared paths
   (`/opt/sandpod/node/<major>/bin/node`,
   `/opt/sandpod/python/<ver>/bin/python3.<minor>`) and fall back to

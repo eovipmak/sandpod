@@ -19,7 +19,7 @@ func TestGenerateSiteConfMultiDomain(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(customers,
-		[]byte("001\tsvc-c001\tcustomer-001\t18001\t22201\timg:pilot\n"), 0644); err != nil {
+		[]byte("001\tsvc-c001\tcustomer-001\t18001\t22201\timg:node-shared\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(sites,

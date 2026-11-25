@@ -28,8 +28,9 @@ Hiện trạng host trước migration:
   (`userns=private`) và loopback-only (`127.0.0.1:1800x/2220x`).
 - [x] Dữ liệu pilot `001` chuyển `~/data/public` → `~/data/public_html` cho
   khớp template `$site_root` (002 đã đúng từ trước).
-- [x] Cập nhật `AGENTS.md`/README: không cần bỏ tag `:pilot`; khách cũ vẫn có
-  thể pin `:pilot`, khách mới mặc định `:node-shared`. `AGENTS.md` đã ghi đúng.
+- [x] Bỏ hẳn chính sách giữ tag `:pilot`: xoá image khỏi root + storage từng
+  account, registry/docs chỉ còn `:node-shared`; `AGENTS.md`,
+  customer-container/provisioning/shared-runtimes README và Spec đã cập nhật.
 
 `scope: in-scope — vận hành host (customer-provisioning + customer-container); quyết định migrate thuộc operator/panel.`
 

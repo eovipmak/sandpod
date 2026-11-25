@@ -93,8 +93,8 @@ RUN supervisor_password="$(openssl rand -hex 32)" \
     && ln -s /opt/remi/php86/root/usr/bin/php /usr/local/bin/php86 \
     && ln -s /usr/local/bin/php83 /usr/local/bin/php \
     # Shared Node/Python: /usr/local/bin names resolve to the read-only
-    # host trees when mounted; when the mount is absent (old pilot tag)
-    # the dangling link is skipped by PATH lookup and the image RPM
+    # host trees when mounted; when the mount is absent the dangling link
+    # is skipped by PATH lookup and the image RPM
     # binaries in /usr/bin take over (fallback, see control-panel Spec v3).
     && ln -s /opt/sandpod/node/default/bin/node /usr/local/bin/node \
     && ln -s /opt/sandpod/node/22/bin/node /usr/local/bin/node-22 \

@@ -1,4 +1,4 @@
 #instance	service_user	container	web_port	ssh_port	image
-#001	svc-c001	customer-001	18001	22201	localhost/sandpod/customer-runtime:pilot
-# New customers (002+) default to :node-shared (shared Node/Python wiring);
-# 001 stays pinned to :pilot until explicitly migrated.
+#001	svc-c001	customer-001	18001	22201	localhost/sandpod/customer-runtime:node-shared
+#002	svc-c002	customer-002	18002	22202	localhost/sandpod/customer-runtime:node-shared
+# All customers use the :node-shared tag. :pilot is retired; do not pin it.
